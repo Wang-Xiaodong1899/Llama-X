@@ -192,8 +192,8 @@ deepspeed train.py \
 ```
 - Train LLaMA-7B on DeepSpeed Zero-3 with Multi-nodes
 ```bash
-deepspeed --num_gpus num_of_gpus_in_each_node \
-    --num_nodes num_of_nodes \
+export NCCL_IB_DISABLE=1;export NCCL_IBEXT_DISABLE=1 && deepspeed --num_gpus 8 \
+    --num_nodes 3 \
     --master_addr PHLRR3070 \
     --master_port 34545 \
     --hostfile configs/hostfile \
