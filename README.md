@@ -175,7 +175,7 @@ deepspeed train.py \
     --output_dir /f_data/G/llama-x/llama-7b-ft \
     --num_train_epochs 3 \
     --model_max_length 512 \
-    --per_device_train_batch_size 16 \
+    --per_device_train_batch_size 64 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 1 \
     --evaluation_strategy "no" \
