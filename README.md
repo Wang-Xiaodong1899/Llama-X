@@ -170,12 +170,12 @@ python transformers/src/transformers/models/llama/convert_llama_weights_to_hf.py
 - Train LLaMA-7B on DeepSpeed Zero-3:
 ```bash
 deepspeed train.py \
-    --model_name_or_path /path/to/llama-7B/hf \
-    --data_path /path/to/example_data.json \
-    --output_dir /path/to/llama-7B/hf/ft \
+    --model_name_or_path /f_data/G/llama/llama-7b-hf/ \
+    --data_path ../data/alpaca_data.json \
+    --output_dir /f_data/G/llama-x/llama-7b-ft \
     --num_train_epochs 3 \
     --model_max_length 512 \
-    --per_device_train_batch_size 64 \
+    --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 1 \
     --evaluation_strategy "no" \
