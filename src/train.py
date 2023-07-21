@@ -16,13 +16,20 @@ import copy
 import logging
 import random
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Sequence
+from typing import Callable, List, Optional, Dict, Sequence, Tuple, Union
 
 import torch
+from torch import nn
 import torch.distributed
 import transformers
 from torch.utils.data import Dataset
 from transformers import Trainer
+from transformers.data.data_collator import DataCollator
+from transformers.modeling_utils import PreTrainedModel
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+from transformers.trainer_callback import TrainerCallback
+from transformers.trainer_utils import EvalPrediction
+from transformers.training_args import TrainingArguments
 from datasets import load_dataset
 import utils
 
@@ -43,6 +50,12 @@ PROMPT_DICT = {
         "### Instruction:\n{instruction}\n\n### Response:"
     ),
 }
+
+class Emu_Trainer(Trainer):
+    def compute_loss(self, model, inputs, return_outputs=False):
+        # outputs['logits'] -> label_smoother to compute loss
+        
+        return (loss, outputs) if return_outputs else loss
 
 
 @dataclass

@@ -145,12 +145,11 @@ Results:
 ```bash
 conda create -n llamax python=3.10
 conda activate llamax
-git clone https://github.com/AetherCortex/Llama-X.git
-cd Llama-X/src
 conda install pytorch==1.12.0 torchvision==0.13.0 torchaudio==0.12.0 cudatoolkit=11.3 -c pytorch
 pip install transformers==4.29.2
-cd ../..
+cd Llama-X
 pip install -r requirements.txt
+
 ```
 
 - Training data example (e.g., [Stanford Alpaca](https://github.com/tatsu-lab/stanford_alpaca/blob/main/alpaca_data.json)):
@@ -195,13 +194,13 @@ deepspeed train.py \
 ```bash
 deepspeed --num_gpus num_of_gpus_in_each_node \
     --num_nodes num_of_nodes \
-    --master_addr ip_address_of_main_node \
+    --master_addr PHLRR3070 \
     --master_port 34545 \
     --hostfile configs/hostfile \
     train.py \
-    --model_name_or_path /path/to/llama-7B/hf \
-    --data_path /path/to/example_data.json \
-    --output_dir /path/to/llama-7B/hf/ft \
+    --model_name_or_path /f_data/G/llama/llama-7b-hf/ \
+    --data_path ../data/alpaca_data.json \
+    --output_dir /f_data/G/llama-x/llama-7b-ft-3node \
     --num_train_epochs 3 \
     --model_max_length 512 \
     --per_device_train_batch_size 64 \
@@ -213,7 +212,7 @@ deepspeed --num_gpus num_of_gpus_in_each_node \
     --save_total_limit 2 \
     --learning_rate 2e-5 \
     --warmup_steps 2 \
-    --logging_steps 2 \
+    --logging_steps 10 \
     --lr_scheduler_type "cosine" \
     --report_to "tensorboard" \
     --gradient_checkpointing True \
