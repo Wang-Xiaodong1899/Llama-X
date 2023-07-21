@@ -25,7 +25,7 @@ except:
 
 def main(
     load_8bit: bool = False,
-    base_model: str = "/path/to/llama-7B/hf/ft/checkpoint-300",
+    base_model: str = "/f_data/G/llama-x/llama-7b-ft/checkpoint-300",
     # lora_weights: str = "tloen/alpaca-lora-7b",
 ):
     assert base_model, (

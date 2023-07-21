@@ -198,12 +198,12 @@ deepspeed train.py \
     --master_port 34545 \
     --hostfile configs/hostfile \
     train.py \
-    --model_name_or_path /f_data/G/llama/llama-7b-hf/ \
+    --model_name_or_path /f_data/G/llama/llama-13b-hf/ \
     --data_path ../data/alpaca_data.json \
-    --output_dir /f_data/G/llama-x/llama-7b-ft-3node \
+    --output_dir /f_data/G/llama-x/llama-13b-ft-3node \
     --num_train_epochs 3 \
     --model_max_length 512 \
-    --per_device_train_batch_size 64 \
+    --per_device_train_batch_size 32 \
     --per_device_eval_batch_size 4 \
     --gradient_accumulation_steps 1 \
     --evaluation_strategy "no" \
