@@ -65,6 +65,7 @@ class LlamaModeling(nn.Module):
         self.norm = LlamaRMSNorm(args.hidden_size, eps=args.rms_norm_eps)
         self.gradient_checkpointing = False
         self.lm_head = nn.Linear(args.hidden_size, args.vocab_size, bias=False)
+        self.config = None
 
 
     def get_input_embeddings(self):
