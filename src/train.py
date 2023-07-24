@@ -157,6 +157,7 @@ class DataCollatorForSupervisedDataset(object):
     tokenizer: transformers.PreTrainedTokenizer
 
     def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
+        print(instances[0].keys())
         input_ids, labels = tuple([instance[key] for instance in instances] for key in ("input_ids", "labels"))
         input_ids = [torch.tensor(x) for x in input_ids]
         input_ids = torch.nn.utils.rnn.pad_sequence(
