@@ -240,8 +240,8 @@ def train():
     model.config = transformers.LlamaConfig(**model_config)
     
     print("INFO begin to init llama")
-    state_dict = torch.load(args.llama_7b_state_dict, map_location="cpu")
-    model_parameters = model.load_state_dict(state_dict)
+    # state_dict = torch.load(args.llama_7b_state_dict, map_location="cpu")
+    # model_parameters = model.load_state_dict(state_dict)
 
     tokenizer = transformers.LlamaTokenizer.from_pretrained(
         model_args.model_name_or_path,
