@@ -59,9 +59,9 @@ PROMPT_DICT = {
 class Emu_Trainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         # outputs['logits'] -> label_smoother to compute loss
-        labels = inputs.pop("labels")
-        input_ids = inputs.pop("input_ids")
-        attention_mask = inputs.pop("attention_mask")
+        labels = inputs["labels"]
+        input_ids = inputs["input_ids"]
+        attention_mask = inputs["attention_mask"]
         outputs = model(input_ids=input_ids, attention_mask=attention_mask)
         if labels is not None:
             loss = self.label_smoother(outputs, labels, shift_labels=True)
