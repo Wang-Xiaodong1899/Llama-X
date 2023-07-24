@@ -58,8 +58,14 @@ PROMPT_DICT = {
 class Emu_Trainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         # outputs['logits'] -> label_smoother to compute loss
+        labels = inputs.pop("labels")
+        input_ids = inputs.pop("input_ids")
+        attention_mask = inputs.pop("attention_mask")
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+        if labels is not None:
+            loss = self.label_smoother(outputs, labels, shift_labels=True)
         
-        return (loss, outputs) if return_outputs else loss
+        return loss
 
 
 @dataclass
@@ -189,7 +195,32 @@ def train_tokenize_function(examples, tokenizer):
     targets = [f"{output}{tokenizer.eos_token}" for output in examples['output']]
     data_dict = preprocess(sources, targets, tokenizer)
     return data_dict
-              
+
+class llamaconfig():
+    def __init__(self) -> None:
+        self.hidden_size = 4096
+        self.intermediate_size = 11008
+        self.dropout = 0.1
+        self.attention_dropout = 0.0
+        self.n_layers = 32
+        self.num_attention_heads = 32
+        self.max_target_positions = 2048
+        self.vocab_size = 32000
+        self.multiple_of = 256
+        self.initializer_range = 0.02
+        self.norm_eps = 1e-4
+        self.rms_norm_eps = 1e-6
+        self.use_cache = False
+        self.pad_token_id = 0
+        self.bos_token_id = 1
+        self.eos_token_id = 2
+        self.max_seq_len = 512
+        self.hidden_act = "silu"
+        
+        self.llama_7b_state_dict = '/f_data/G/llama/7B/pytorch_model-33-of-33.bin'
+
+
+
 def train():
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
@@ -198,7 +229,11 @@ def train():
     #     model_args.model_name_or_path,
     #     cache_dir=training_args.cache_dir,
     # )
-    model = LlamaModeling()
+    args = llamaconfig()
+    model = LlamaModeling(args)
+    print("INFO begin to init llama")
+    state_dict = torch.load(args.llama_7b_state_dict, map_location="cpu")
+    model_parameters = model.load_state_dict(state_dict)
 
     tokenizer = transformers.LlamaTokenizer.from_pretrained(
         model_args.model_name_or_path,
@@ -252,7 +287,7 @@ def train():
     model.is_parallelizable = True
     model.model_parallel = True
 
-    trainer = Trainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
+    trainer = Emu_Trainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
     model.config.use_cache = False
 
     trainer.train()
