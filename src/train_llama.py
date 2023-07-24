@@ -242,18 +242,19 @@ def train():
         padding_side="right",
         use_fast=True,
     )
-    if tokenizer.pad_token is None:
-        smart_tokenizer_and_embedding_resize(
-            special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
-            tokenizer=tokenizer,
-            model=model,
-        )
+    # if tokenizer.pad_token is None:
+    #     smart_tokenizer_and_embedding_resize(
+    #         special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
+    #         tokenizer=tokenizer,
+    #         model=model,
+    #     )
     if "llama" in model_args.model_name_or_path:
         tokenizer.add_special_tokens(
             {
                 "eos_token": DEFAULT_EOS_TOKEN,
                 "bos_token": DEFAULT_BOS_TOKEN,
                 "unk_token": DEFAULT_UNK_TOKEN,
+                "pad_token": DEFAULT_UNK_TOKEN,
             }
         )
 
