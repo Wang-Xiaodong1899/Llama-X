@@ -289,7 +289,7 @@ def train():
     model.model_parallel = True
 
     trainer = Emu_Trainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
-    model.config.use_cache = False
+    # model.config.use_cache = False
 
     trainer.train()
     trainer.save_state()
