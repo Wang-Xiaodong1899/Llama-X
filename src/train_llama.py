@@ -236,7 +236,7 @@ def train():
     config_name = '/f_data/G/llama/llama-7b-hf/config.json'
     with open(config_name) as f:
         model_config = json.load(f)
-    model.config = model_config
+    model.config = transformers.LlamaConfig(**model_config)
     
     print("INFO begin to init llama")
     state_dict = torch.load(args.llama_7b_state_dict, map_location="cpu")
