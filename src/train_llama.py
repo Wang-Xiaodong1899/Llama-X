@@ -169,7 +169,7 @@ class DataCollatorForSupervisedDataset(object):
 
     def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
         print(instances[0].keys())
-        input_ids, labels = tuple([instance[key] for instance in instances] for key in ("input_ids", "labels"))
+        input_ids, labels = tuple([instance[key] for instance in instances] for key in ("input_ids", "label"))
         input_ids = [torch.tensor(x) for x in input_ids]
         input_ids = torch.nn.utils.rnn.pad_sequence(
             input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
@@ -291,7 +291,7 @@ def train():
             print(f"Sample {index} of the training set: {train_dataset[index]}.")
     
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
-    data_module = dict(train_dataset=train_dataset, eval_dataset=None, data_collator=None)
+    data_module = dict(train_dataset=train_dataset, eval_dataset=None, data_collator=data_collator)
 
     #Tell Trainer not to attempt DataParallel
     model.is_parallelizable = True
