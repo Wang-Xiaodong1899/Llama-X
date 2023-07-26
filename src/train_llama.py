@@ -60,7 +60,7 @@ class Emu_Trainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         # outputs['logits'] -> label_smoother to compute loss
         print(inputs)
-        labels = inputs["labels"]
+        labels = inputs["label"]
         input_ids = inputs["input_ids"]
         attention_mask = inputs["attention_mask"]
         outputs = model(input_ids=input_ids, attention_mask=attention_mask)
