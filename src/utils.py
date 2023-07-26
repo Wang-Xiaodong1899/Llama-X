@@ -1,17 +1,64 @@
-import dataclasses
-import logging
-import math
-import os
-import io
-import sys
-import time
-import json
-from typing import Optional, Sequence, Union
+# -*- coding:utf-8 -*-
 
 import openai
-import tqdm
 from openai import openai_object
+import os
+import sys
+import shutil
+import subprocess
+import logging
+import colorlog
+import argparse
 import copy
+import pathlib
+import shlex
+import deepdish
+from tqdm import tqdm
+import time
+import platform
+import pickle
+import yaml
+import glob
+import random
+import msgpack
+import importlib
+import traceback
+from PIL import Image
+import functools
+from functools import partial
+import urllib.request
+from warnings import simplefilter
+from datetime import timedelta
+from timeit import default_timer
+from configobj import ConfigObj
+import requests
+import psutil
+import hashlib
+import imageio
+import math
+import h5py
+import csv
+import collections
+from collections import OrderedDict
+import json
+import json_lines
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+from torch.optim import Adam
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
+from einops import rearrange, repeat
+import torch.distributed as dist
+from torchvision import datasets, transforms, utils
+import torchvision
+import cv2
+
+import dataclasses
+import io
+from typing import Optional, Sequence, Union
 
 StrOrOpenAIObject = Union[str, openai_object.OpenAIObject]
 
@@ -171,3 +218,146 @@ def jload(f, mode="r"):
     jdict = json.load(f)
     f.close()
     return jdict
+
+def split_filename(filename):
+    absname = os.path.abspath(filename)
+    dirname, basename = os.path.split(absname)
+    split_tmp = basename.rsplit('.', maxsplit=1)
+    if len(split_tmp) == 2:
+        rootname, extname = split_tmp
+    elif len(split_tmp) == 1:
+        rootname = split_tmp[0]
+        extname = None
+    else:
+        raise ValueError("programming error!")
+    return dirname, rootname, extname
+
+
+def file2data(filename, type=None, printable=True, **kwargs):
+    dirname, rootname, extname = split_filename(filename)
+    print_load_flag = True
+    if type:
+        extname = type
+    if extname == 'pkl':
+        with open(filename, 'rb') as f:
+            data = pickle.load(f)
+    elif extname == 'msg':
+        with open(filename, 'rb') as f:
+            data = msgpack.load(f, encoding="utf-8")
+    elif extname == 'h5':
+        split_num = kwargs.get('split_num')
+        if split_num:
+            print_load_flag = False
+            if isinstance(split_num, int):
+                filenames = ["%s_%i" % (filename, i) for i in range(split_num)]
+                if split_num != len(glob.glob("%s*" % filename)):
+                    print('Maybe you are giving a wrong split_num(%d) != seached num (%d)' % (
+                        split_num, len(glob.glob("%s*" % filename))))
+
+            elif split_num == 'auto':
+                filenames = glob.glob("%s*" % filename)
+                print('Auto located %d splits linked to %s' % (len(filenames), filename))
+            else:
+                raise ValueError("params['split_num'] got unexpected value: %s, which is not supported." % split_num)
+            data = []
+            for e in filenames:
+                data.extend(deepdish.io.load(e))
+            print('Loaded data from %s_(%s)' % (
+                os.path.abspath(filename), ','.join(sorted([e.split('_')[-1] for e in filenames]))))
+        else:
+            data = deepdish.io.load(filename)
+    elif extname == 'csv':
+        data = pd.read_csv(filename)
+    elif extname == 'tsv':  # Returns generator since tsv file is large.
+        if not kwargs.get('delimiter'):  # Set default delimiter
+            kwargs['delimiter'] = '\t'
+        if not kwargs.get('fieldnames'):  # Check field names
+            raise ValueError('You must specify fieldnames when load tsv data.')
+        # Required args.
+        key_str = kwargs.pop('key_str')
+        decode_fn = kwargs.pop('decode_fn')
+        # Optimal args.
+        topk = kwargs.pop('topk', None)
+        redis = kwargs.pop('redis', None)
+        if not redis:
+            data = dict()
+        else:
+            data = redis
+        if not redis or not redis.check():
+            with open(filename) as f:
+                reader = csv.DictReader(f, **kwargs)
+                for i, item in enumerate(tqdm(reader)):
+                    if not redis:  # if memory way
+                        decode_fn(item)
+                    data[item[key_str]] = item
+                    if topk is not None and i + 1 == topk:
+                        break
+        else:
+            print('check_str %s in redis, skip loading.' % data.check_str)
+    elif extname == 'hy':
+        data = h5py.File(filename, 'r')
+    elif extname in ['npy', 'npz']:
+        try:
+            data = np.load(filename, allow_pickle=True)
+        except UnicodeError:
+            print('%s is python2 format, auto use latin1 encoding.' % os.path.abspath(filename))
+            data = np.load(filename, encoding='latin1', allow_pickle=True)
+    elif extname == 'json':
+        with open(filename) as f:
+            try:
+                data = json.load(f)
+            except json.decoder.JSONDecodeError as e:
+                raise ValueError('[error] utils.file2data: failed to load json file %s' % filename)
+    elif extname == 'jsonl':
+        with open(filename, 'rb') as f:
+            data = [e for e in json_lines.reader(f)]
+    elif extname == 'ini':
+        data = ConfigObj(filename, encoding='utf-8')
+    elif extname in ['pth', 'ckpt']:
+        data = torch.load(filename, map_location=kwargs.get('map_location'))
+    elif extname == 'txt':
+        top = kwargs.get('top', None)
+        with open(filename, encoding='utf-8') as f:
+            if top:
+                data = [f.readline() for _ in range(top)]
+            else:
+                data = [e for e in f.read().split('\n') if e]
+    elif extname == 'yaml':
+        with open(filename, 'r') as f:
+            data = yaml.load(f)
+    else:
+        raise ValueError('type can only support h5, npy, json, txt')
+    if printable:
+        if print_load_flag:
+            print('Loaded data from %s' % os.path.abspath(filename))
+    return data
+
+def adaptively_load_state_dict(target, state_dict):
+    target_dict = target.state_dict()
+
+    try:
+        common_dict = {k: v for k, v in state_dict.items() if k in target_dict and v.size() == target_dict[k].size()}
+    except Exception as e:
+        print('load error %s', e)
+        common_dict = {k: v for k, v in state_dict.items() if k in target_dict}
+
+    if 'param_groups' in common_dict and common_dict['param_groups'][0]['params'] != \
+            target.state_dict()['param_groups'][0]['params']:
+        print('Detected mismatch params, auto adapte state_dict to current')
+        common_dict['param_groups'][0]['params'] = target.state_dict()['param_groups'][0]['params']
+    target_dict.update(common_dict)
+    target.load_state_dict(target_dict)
+
+    missing_keys = [k for k in target_dict.keys() if k not in common_dict]
+    unexpected_keys = [k for k in state_dict.keys() if k not in common_dict]
+
+    if len(unexpected_keys) != 0:
+        print(
+            f"Some weights of state_dict were not used in target: {unexpected_keys}"
+        )
+    if len(missing_keys) != 0:
+        print(
+            f"Some weights of state_dict are missing used in target {missing_keys}"
+        )
+    if len(unexpected_keys) == 0 and len(missing_keys) == 0:
+        print("Strictly Loaded state_dict.")

@@ -165,6 +165,7 @@ class DataCollatorForSupervisedDataset(object):
         )
         labels = [torch.tensor(x) for x in labels]
         labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX)
+        print(f'pad id: {self.tokenizer.pad_token_id}')
         return dict(
             input_ids=input_ids,
             labels=labels,
@@ -241,7 +242,7 @@ def train():
         print(len(train_dataset))
         for index in random.sample(range(len(train_dataset)), 3):
             print(f"Sample {index} of the training set: {train_dataset[index]}.")
-    
+    print(f'pad id: {self.tokenizer.pad_token_id}')
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
     data_module = dict(train_dataset=train_dataset, eval_dataset=None, data_collator=data_collator)
 

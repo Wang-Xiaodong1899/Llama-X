@@ -14,6 +14,7 @@
 import sys
 sys.path.append('/workspace/Llama-X')
 
+import os
 import json
 import copy
 import logging
@@ -34,9 +35,8 @@ from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 from datasets import load_dataset
-from torch.nn import CrossEntropyLoss
+from utils import *
 
-import utils
 from llama.attention import *
 
 IGNORE_INDEX = -100
@@ -63,23 +63,12 @@ class Emu_Trainer(Trainer):
         print(inputs)
         labels = inputs["label"]
         input_ids = inputs["input_ids"]
-        batch_size = input_ids.shape[0]
         attention_mask = inputs["attention_mask"]
         outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-        logits = outputs['logits']
+        if labels is not None:
+            loss = self.label_smoother(outputs, labels, shift_labels=True)
         
-        shift_logits = logits[..., :, :].contiguous()
-        shift_labels = labels[..., :].contiguous()
-        loss_mask = loss_mask[..., :].contiguous()
-        # Flatten the tokens
-        loss_fct = CrossEntropyLoss(reduction='none')
-        loss = loss_fct(shift_logits.view(-1, self.config.vocab_size), shift_labels.view(-1).long())
-        total_loss = (loss.view(batch_size, -1) * loss_mask).mean()  # add loss mask
-        
-        return {
-            'loss_total': total_loss, 
-            'loss_raw': loss.mean()
-        }
+        return loss
 
 
 @dataclass
@@ -212,72 +201,79 @@ def train_tokenize_function(examples, tokenizer):
 
 class llamaconfig():
     def __init__(self) -> None:
-        self.hidden_size = 4096
-        self.intermediate_size = 11008
-        self.dropout = 0.1
-        self.attention_dropout = 0.0
-        self.n_layers = 32
-        self.num_attention_heads = 32
-        self.max_target_positions = 2048
-        self.vocab_size = 32000
-        self.multiple_of = 256
-        self.initializer_range = 0.02
-        self.norm_eps = 1e-4
-        self.rms_norm_eps = 1e-6
-        self.use_cache = False
-        self.pad_token_id = 0
-        self.bos_token_id = 1
-        self.eos_token_id = 2
-        self.max_seq_len = 512
-        self.hidden_act = "silu"
-        
-        self.llama_7b_state_dict = '/f_data/G/llama/7B/pytorch_model-33-of-33.bin'
+        ckpt_path = os.path.join('/f_data/G', "Emu/Emu/Emu-instruct.pt")
+        instruct = True
+        model_config_file = '/workspace/Llama-X/model/emu/Emu-14B.json'
+        max_seq_length = 256
 
+def quick_freeze(model):
+    for name, param in model.named_parameters():
+        param.requires_grad = False
+    return model
 
 
 def train():
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
         
-    model = transformers.AutoModelForCausalLM.from_pretrained(
-        model_args.model_name_or_path,
-        cache_dir=training_args.cache_dir,
-    )
+    # model = transformers.AutoModelForCausalLM.from_pretrained(
+    #     model_args.model_name_or_path,
+    #     cache_dir=training_args.cache_dir,
+    # )
+    from emu.modeling_emu import Emu
     args = llamaconfig()
-    model = LlamaModeling(args)
-    model = model.half()
     
-    config_name = '/f_data/G/llama/llama-7b-hf/config.json'
-    with open(config_name) as f:
-        model_config = json.load(f)
-    model.config = transformers.LlamaConfig(**model_config)
+    emu_config = file2data(args.model_config_file)
+    model = Emu(**emu_config, cast_dtype=torch.float, args=args)
+    
+    print('Patching LoRA...')
+    from peft import LoraConfig, get_peft_model
+    lora_config = LoraConfig(
+        r=16,
+        lora_alpha=16,
+        target_modules=['q_proj', 'k_proj', 'v_proj', 'o_proj'],
+        lora_dropout=0.05,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+    model.decoder.lm = get_peft_model(model.decoder.lm, lora_config)
+    model = quick_freeze(model)
+    model.visual = model.visual.eval().half()
+    model.ln_visual = model.ln_visual.eval().half()
+    model.cformer = model.cformer.eval().half()
+    
+    ckpt = torch.load(args.ckpt_path, map_location="cpu")
+    adaptively_load_state_dict(model, ckpt)
     
     print("INFO begin to init llama")
     # state_dict = torch.load(args.llama_7b_state_dict, map_location="cpu")
     # model_parameters = model.load_state_dict(state_dict)
 
-    tokenizer = transformers.LlamaTokenizer.from_pretrained(
-        model_args.model_name_or_path,
-        cache_dir=training_args.cache_dir,
-        model_max_length=training_args.model_max_length,
-        padding_side="right",
-        use_fast=True,
-    )
+    # tokenizer = transformers.LlamaTokenizer.from_pretrained(
+    #     model_args.model_name_or_path,
+    #     cache_dir=training_args.cache_dir,
+    #     model_max_length=training_args.model_max_length,
+    #     padding_side="right",
+    #     use_fast=True,
+    # )
     # if tokenizer.pad_token is None:
     #     smart_tokenizer_and_embedding_resize(
     #         special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
     #         tokenizer=tokenizer,
     #         model=model,
     #     )
-    if "llama" in model_args.model_name_or_path:
-        tokenizer.add_special_tokens(
-            {
-                "eos_token": DEFAULT_EOS_TOKEN,
-                "bos_token": DEFAULT_BOS_TOKEN,
-                "unk_token": DEFAULT_UNK_TOKEN,
-                "pad_token": DEFAULT_UNK_TOKEN,
-            }
-        )
+    # if "llama" in model_args.model_name_or_path:
+    #     tokenizer.add_special_tokens(
+    #         {
+    #             "eos_token": DEFAULT_EOS_TOKEN,
+    #             "bos_token": DEFAULT_BOS_TOKEN,
+    #             "unk_token": DEFAULT_UNK_TOKEN,
+    #             "pad_token": DEFAULT_UNK_TOKEN,
+    #         }
+    #     )
+    from emu.modeling_llama_adapter import LLaMAForClsAndRegression
+    if isinstance(model.decoder, LLaMAForClsAndRegression):
+        model.decoder.tokenizer.padding_side = "right"
 
     raw_train_datasets = load_dataset('json', data_files=data_args.data_path, split="train", cache_dir=training_args.cache_dir)
     if training_args.local_rank > 0: 
