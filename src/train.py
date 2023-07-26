@@ -31,7 +31,7 @@ from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 from datasets import load_dataset
-import utils
+# import utils
 
 IGNORE_INDEX = -100
 DEFAULT_PAD_TOKEN = "[PAD]"
