@@ -178,7 +178,7 @@ class DataCollatorForSupervisedDataset(object):
         labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX)
         return dict(
             input_ids=input_ids,
-            labels=labels,
+            label=labels,
             attention_mask=input_ids.ne(self.tokenizer.pad_token_id),
         )
 
