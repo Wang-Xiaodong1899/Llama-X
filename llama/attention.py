@@ -73,6 +73,9 @@ class LlamaModeling(nn.Module):
 
     def set_input_embeddings(self, value):
         self.tok_embeddings = value
+    
+    def get_output_embeddings(self):
+        return self.lm_head
 
     def _prepare_decoder_attention_mask(self, attention_mask, input_shape, inputs_embeds, past_key_values_length):
         # create causal mask
