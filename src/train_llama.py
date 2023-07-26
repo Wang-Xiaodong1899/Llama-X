@@ -36,7 +36,7 @@ from transformers.training_args import TrainingArguments
 from datasets import load_dataset
 from torch.nn import CrossEntropyLoss
 
-import utils
+# import utils
 from llama.attention import *
 
 IGNORE_INDEX = -100
