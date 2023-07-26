@@ -290,7 +290,7 @@ def train():
             print(f"Sample {index} of the training set: {train_dataset[index]}.")
     
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
-    data_module = dict(train_dataset=train_dataset, eval_dataset=None, data_collator=data_collator)
+    data_module = dict(train_dataset=train_dataset, eval_dataset=None, data_collator=None)
 
     #Tell Trainer not to attempt DataParallel
     model.is_parallelizable = True
