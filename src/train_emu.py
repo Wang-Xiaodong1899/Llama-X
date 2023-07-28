@@ -97,7 +97,7 @@ class DataArguments:
 
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
-    label_names: List[str] = field(default_factory=lambda: ['input_ids', 'label', 'image_names'])
+    label_names: List[str] = field(default_factory=lambda: ['input_ids', 'label', 'image_names', 'image'])
     cache_dir: Optional[str] = field(default=None)
     optim: str = field(default="adamw_torch")
     model_max_length: int = field(
