@@ -244,62 +244,59 @@ def train():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     
     # Debug by LLaMA
-    model = transformers.AutoModelForCausalLM.from_pretrained(
-        model_args.model_name_or_path,
-        cache_dir=training_args.cache_dir,
-    )
+    # model = transformers.AutoModelForCausalLM.from_pretrained(
+    #     model_args.model_name_or_path,
+    #     cache_dir=training_args.cache_dir,
+    # )
 
-    tokenizer = transformers.LlamaTokenizer.from_pretrained(
-        model_args.model_name_or_path,
-        cache_dir=training_args.cache_dir,
-        model_max_length=training_args.model_max_length,
-        padding_side="right",
-        use_fast=True,
-    )
-    if tokenizer.pad_token is None:
-        smart_tokenizer_and_embedding_resize(
-            special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
-            tokenizer=tokenizer,
-            model=model,
-        )
-    if "llama" in model_args.model_name_or_path:
-        tokenizer.add_special_tokens(
-            {
-                "eos_token": DEFAULT_EOS_TOKEN,
-                "bos_token": DEFAULT_BOS_TOKEN,
-                "unk_token": DEFAULT_UNK_TOKEN,
-            }
-        )
+    # tokenizer = transformers.LlamaTokenizer.from_pretrained(
+    #     model_args.model_name_or_path,
+    #     cache_dir=training_args.cache_dir,
+    #     model_max_length=training_args.model_max_length,
+    #     padding_side="right",
+    #     use_fast=True,
+    # )
+    # if tokenizer.pad_token is None:
+    #     smart_tokenizer_and_embedding_resize(
+    #         special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
+    #         tokenizer=tokenizer,
+    #         model=model,
+    #     )
+    # if "llama" in model_args.model_name_or_path:
+    #     tokenizer.add_special_tokens(
+    #         {
+    #             "eos_token": DEFAULT_EOS_TOKEN,
+    #             "bos_token": DEFAULT_BOS_TOKEN,
+    #             "unk_token": DEFAULT_UNK_TOKEN,
+    #         }
+    #     )
     
     # TODO EMU
-    # from emu.modeling_emu import Emu
-    # args = llamaconfig()
+    from emu.modeling_emu import Emu
+    args = llamaconfig()
     
-    # emu_config = file2data(args.model_config_file)
-    # model = Emu(**emu_config, cast_dtype=torch.float, args=args)
+    emu_config = file2data(args.model_config_file)
+    model = Emu(**emu_config, cast_dtype=torch.float, args=args)
     
-    # print('Patching LoRA...')
-    # from peft import LoraConfig, get_peft_model
-    # lora_config = LoraConfig(
-    #     r=16,
-    #     lora_alpha=16,
-    #     target_modules=['q_proj', 'k_proj', 'v_proj', 'o_proj'],
-    #     lora_dropout=0.05,
-    #     bias="none",
-    #     task_type="CAUSAL_LM",
-    # )
-    # model.decoder.lm = get_peft_model(model.decoder.lm, lora_config)
-    # model = quick_freeze(model)
-    # model.visual = model.visual.eval().half()
-    # model.ln_visual = model.ln_visual.eval().half()
-    # model.cformer = model.cformer.eval().half()
+    print('Patching LoRA...')
+    from peft import LoraConfig, get_peft_model
+    lora_config = LoraConfig(
+        r=16,
+        lora_alpha=16,
+        target_modules=['q_proj', 'k_proj', 'v_proj', 'o_proj'],
+        lora_dropout=0.05,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+    model.decoder.lm = get_peft_model(model.decoder.lm, lora_config)
+    model = quick_freeze(model)
+    model.visual = model.visual.eval().half()
+    model.ln_visual = model.ln_visual.eval().half()
+    model.cformer = model.cformer.eval().half()
     
+    print("loading ckpt...")
     # ckpt = torch.load(args.ckpt_path, map_location="cpu")
     # adaptively_load_state_dict(model, ckpt)
-    
-    print("INFO begin to init llama")
-    # state_dict = torch.load(args.llama_7b_state_dict, map_location="cpu")
-    # model_parameters = model.load_state_dict(state_dict)
 
     
     #TODO model.decoder.tokenizer
@@ -307,10 +304,10 @@ def train():
                                   ASSISTANT_TOKEN]
     # lm.tokenizer will be set in initialzation of decoder, No Action Need!
     
-    # from emu.modeling_llama import LLaMAForClsAndRegression
-    # if isinstance(model.decoder, LLaMAForClsAndRegression):
-    #     model.decoder.tokenizer.padding_side = "right"
-    # tokenizer = model.decoder.tokenizer
+    from emu.modeling_llama import LLaMAForClsAndRegression
+    if isinstance(model.decoder, LLaMAForClsAndRegression):
+        model.decoder.tokenizer.padding_side = "right"
+    tokenizer = model.decoder.tokenizer
         
     
     # model Ingore
