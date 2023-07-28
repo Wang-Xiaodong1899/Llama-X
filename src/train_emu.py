@@ -94,7 +94,7 @@ class DataArguments:
 
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
-    label_names: ['input_ids', 'label', 'image_names']
+    label_names: List[str] = field(default=['input_ids', 'label', 'image_names'], metadata={"help": "The list of keys in your dictionary of inputs that correspond to the labels."})
     cache_dir: Optional[str] = field(default=None)
     optim: str = field(default="adamw_torch")
     model_max_length: int = field(
