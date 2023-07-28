@@ -171,9 +171,9 @@ python transformers/src/transformers/models/llama/convert_llama_weights_to_hf.py
 deepspeed train.py \
     --model_name_or_path /f_data/G/llama/llama-7b-hf/ \
     --data_path ../data/alpaca_data.json \
-    --output_dir /f_data/G/llama-x/llama-7b-ft \
+    --output_dir /f_data/G/llama-x/llama-7b-1024ft \
     --num_train_epochs 3 \
-    --model_max_length 512 \
+    --model_max_length 1024 \
     --per_device_train_batch_size 64 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 1 \

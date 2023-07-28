@@ -58,7 +58,7 @@ class RegressCausalLMOutputWithPast(CausalLMOutputWithPast):
 
 from typing import List, Optional, Tuple, Union
 from transformers.modeling_outputs import BaseModelOutputWithPast
-from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, apply_rotary_pos_emb, repeat_kv
+from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, apply_rotary_pos_emb #repeat_kv
 import torch.nn.functional as F
 import math
 
