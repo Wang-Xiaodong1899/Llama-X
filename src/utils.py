@@ -64,10 +64,86 @@ from typing import Optional, Sequence, Union
 StrOrOpenAIObject = Union[str, openai_object.OpenAIObject]
 image_placeholder = "[IMG]" + "<image>" * 32 + "[/IMG]"
 
-openai_org = os.getenv("OPENAI_ORG")
-if openai_org is not None:
-    openai.organization = openai_org
-    logging.warning(f"Switching to organization: {openai_org} for OAI API key.")
+# Disable transformers outputs weights.
+logging.getLogger().setLevel(logging.WARNING)
+simplefilter(action='ignore', category=FutureWarning)
+
+
+def get_logger(filename=None):
+    """
+    examples:
+        logger = get_logger('try_logging.txt')
+
+        logger.debug("Do something.")
+        logger.info("Start print log.")
+        logger.warning("Something maybe fail.")
+        try:
+            raise ValueError()
+        except ValueError:
+            logger.error("Error", exc_info=True)
+
+        tips:
+        DO NOT logger.inf(some big tensors since color may not helpful.)
+    """
+    logger = logging.getLogger('utils')
+    level = logging.DEBUG
+    logger.setLevel(level=level)
+    # Use propagate to avoid multiple loggings.
+    logger.propagate = False
+    # Remove %(levelname)s since we have colorlog to represent levelname.
+    format_str = '[%(asctime)s <%(filename)s:%(lineno)d> %(funcName)s] %(message)s'
+
+    streamHandler = logging.StreamHandler()
+    streamHandler.setLevel(level)
+    coloredFormatter = colorlog.ColoredFormatter(
+        '%(log_color)s' + format_str,
+        datefmt='%Y-%m-%d %H:%M:%S',
+        reset=True,
+        log_colors={
+            'DEBUG': 'cyan',
+            # 'INFO': 'white',
+            'WARNING': 'yellow',
+            'ERROR': 'red',
+            'CRITICAL': 'reg,bg_white',
+        }
+    )
+
+    streamHandler.setFormatter(coloredFormatter)
+    logger.addHandler(streamHandler)
+
+    if filename:
+        fileHandler = logging.FileHandler(filename)
+        fileHandler.setLevel(level)
+        formatter = logging.Formatter(format_str)
+        fileHandler.setFormatter(formatter)
+        logger.addHandler(fileHandler)
+
+    # Fix multiple logging for torch.distributed
+    try:
+        class UniqueLogger:
+            def __init__(self, logger):
+                self.logger = logger
+                self.local_rank = torch.distributed.get_rank()
+
+            def info(self, msg, *args, **kwargs):
+                if self.local_rank == 0:
+                    return self.logger.info(msg, *args, **kwargs)
+
+            def warning(self, msg, *args, **kwargs):
+                if self.local_rank == 0:
+                    return self.logger.warning(msg, *args, **kwargs)
+
+        logger = UniqueLogger(logger)
+    # AssertionError for gpu with no distributed
+    # AttributeError for no gpu.
+    except Exception:
+        pass
+    return logger
+
+
+logger = get_logger()
+logger.info("<utils.py>: Deep Learning Utils @ Chenfei Wu")
+
 
 
 @dataclasses.dataclass
@@ -401,3 +477,20 @@ def process_video(video_path=None):
         image_list.append(image)
         text_sequence += image_placeholder
     return image_list, text_sequence
+
+
+def import_filename(filename):
+    spec = importlib.util.spec_from_file_location("mymodule", filename)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def set_seed(seed=42):
+    random.seed(seed)
+    os.environ['PYHTONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True

@@ -238,47 +238,77 @@ def quick_freeze(model):
         param.requires_grad = False
     return model
 
+def quick_unfreeze(model):
+    for name, param in model.named_parameters():
+        param.requires_grad = True
+    return model
+
+# Add extra modules to LlamaForCausalLM
+class LlamaNUWA(transformers.LlamaForCausalLM):
+    def __init__(self, config):
+        super().__init__(config)
+        print('New Image projection layer')
+        self.vae_proj = nn.Linear(256, 4096) #256 -> 4096
+        
+        print('Init VQVAE model')
+        vae_cf = '/workspace/GODIVA/config/vae/vqgan/VQGan8192F8.py'
+        vae = import_filename(vae_cf)
+        VQVAE, args_vqvae = vae.Net, vae.args
+        self.vae = VQVAE(args_vqvae, mode='eval')
+        
+        self.vae_emb = nn.Embedding(8192, 256)
+        
+        self.pos_ems = None
+    
 
 def train():
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     
     # Debug by LLaMA
-    # model = transformers.AutoModelForCausalLM.from_pretrained(
-    #     model_args.model_name_or_path,
-    #     cache_dir=training_args.cache_dir,
-    # )
+    model = LlamaNUWA.from_pretrained(
+        model_args.model_name_or_path,
+        cache_dir=training_args.cache_dir,
+    )
 
-    # tokenizer = transformers.LlamaTokenizer.from_pretrained(
-    #     model_args.model_name_or_path,
-    #     cache_dir=training_args.cache_dir,
-    #     model_max_length=training_args.model_max_length,
-    #     padding_side="right",
-    #     use_fast=True,
-    # )
-    # if tokenizer.pad_token is None:
-    #     smart_tokenizer_and_embedding_resize(
-    #         special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
-    #         tokenizer=tokenizer,
-    #         model=model,
-    #     )
-    # if "llama" in model_args.model_name_or_path:
-    #     tokenizer.add_special_tokens(
-    #         {
-    #             "eos_token": DEFAULT_EOS_TOKEN,
-    #             "bos_token": DEFAULT_BOS_TOKEN,
-    #             "unk_token": DEFAULT_UNK_TOKEN,
-    #         }
-    #     )
+    tokenizer = transformers.LlamaTokenizer.from_pretrained(
+        model_args.model_name_or_path,
+        cache_dir=training_args.cache_dir,
+        model_max_length=training_args.model_max_length,
+        padding_side="right",
+        use_fast=True,
+    )
     
-    # TODO EMU
-    from emu.modeling_emu import Emu
-    args = llamaconfig()
+    special_token_list = [DEFAULT_IMG_START_TOKEN, DEFAULT_IMG_END_TOKEN, DEFAULT_IMG_TOKEN]
+    special_tokens_dict = dict(
+            pad_token=DEFAULT_PAD_TOKEN,
+            bos_token=DEFAULT_BOS_TOKEN,
+            eos_token=DEFAULT_EOS_TOKEN,
+            unk_token=DEFAULT_UNK_TOKEN,
+            additional_special_tokens=special_token_list
+        )
+    if tokenizer.pad_token is None:
+        smart_tokenizer_and_embedding_resize(
+            special_tokens_dict=special_tokens_dict,
+            tokenizer=tokenizer,
+            model=model,
+        )
+    model.model.embed_tokens.padding_idx = tokenizer.pad_token_id
+    print(f"The Special Tokens: {tokenizer.special_tokens_map}")
+    print(f"Vocab Size: {len(tokenizer)}")
     
-    emu_config = file2data(args.model_config_file)
-    model = Emu(**emu_config, cast_dtype=torch.float, args=args)
+    image_token_id = tokenizer.convert_tokens_to_ids(['<image>'])
+    print(f"image_token_id: {image_token_id}")
+
+    img_token_id = tokenizer.convert_tokens_to_ids(['[IMG]'])
+    print(f"[IMG] token id: {img_token_id}")
+
+    img_end_token_id = tokenizer.convert_tokens_to_ids(['[/IMG]'])
+    print(f"[/IMG] token id: {img_end_token_id}")
+    special_token_indices = image_token_id + img_token_id + img_end_token_id
     
-    print('Patching LoRA...')
+    
+
     from peft import LoraConfig, get_peft_model
     lora_config = LoraConfig(
         r=16,
@@ -288,36 +318,43 @@ def train():
         bias="none",
         task_type="CAUSAL_LM",
     )
-    model.decoder.lm = get_peft_model(model.decoder.lm, lora_config)
+    model = get_peft_model(model, lora_config)
     
-    model.visual = quick_freeze(model.visual)
-    model.ln_visual = quick_freeze(model.ln_visual)
-    model.cformer = quick_freeze(model.cformer)
-    model.visual = model.visual.eval().half()
-    model.ln_visual = model.ln_visual.eval().half()
-    model.cformer = model.cformer.eval().half()
+    model.vae_proj = quick_unfreeze(model.vae_proj)
     
-    # copy config
-    model.config = model.decoder.lm.config
+    # original Llama + LoRA + vae_proj
+    model.print_trainable_parameters()
     
-    print("loading ckpt...")
-    # ckpt = torch.load(args.ckpt_path, map_location="cpu")
-    # adaptively_load_state_dict(model, ckpt)
-
+    # VQGAN config
+    vae_path = os.path.join('/f_data/G', 'vqg/VQGan8192F8.pth')
     
-    #TODO model.decoder.tokenizer
-    special_token_list = [DEFAULT_IMG_START_TOKEN, DEFAULT_IMG_END_TOKEN, DEFAULT_IMG_TOKEN, USER_TOKEN,
-                                  ASSISTANT_TOKEN]
-    # lm.tokenizer will be set in initialzation of decoder, No Action Need!
+    print(f'init vqvae model from {vae_path}')
+    model.vae.load_state_dict(file2data(vae_path, map_location='cpu'), strict=False)
+    model.vae = quick_freeze(model.vae)
     
-    from emu.modeling_llama import LLaMAForClsAndRegression
-    if isinstance(model.decoder, LLaMAForClsAndRegression):
-        model.decoder.tokenizer.padding_side = "right"
-    tokenizer = model.decoder.tokenizer
+    model.vae_emb.weight = nn.Parameter(copy.deepcopy(model.vae.quantize.embed.weight))
+    model.vae_emb = quick_freeze(model.vae_emb)
+    
+    
+    
+    # TODO NEED to add vae_proj to optimizer
+    
+    # Add optimizer for special token
+    for idx in special_token_indices:  
+        model.base_model.model.model.embed_tokens.weight[idx].requires_grad = True 
         
-    
-    # model Ingore
+    from torch.optim import Adam  
+  
+    optimizer = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-3)  
 
+    
+    # VAE Usage
+    images = images.to(device) # b c s s
+    b, c, s, s = images.size()
+    images = model.vae.get_codebook_indices(images).reshape(b, -1)
+    
+    
+    # model-independent data
     raw_train_datasets = load_dataset('json', data_files=data_args.data_path, split="train", cache_dir=training_args.cache_dir)
     if training_args.local_rank > 0: 
         torch.distributed.barrier()
