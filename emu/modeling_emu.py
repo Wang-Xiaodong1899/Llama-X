@@ -57,9 +57,6 @@ class Emu(nn.Module):
 
         from .modeling_llama import LLaMAForClsAndRegression
         self.decoder = LLaMAForClsAndRegression(args=args)
-        
-        # from .modeling_llama_adapter import LLaMAForClsAndRegression
-        # self.decoder = LLaMAForClsAndRegression(args=args)
 
         if multimodal_cfg.freeze:
             self.decoder.requires_grad_(False)
@@ -101,7 +98,7 @@ class Emu(nn.Module):
         # ln for visual features
         image_features = self.ln_visual(image_features)
         # [B, n_patch, C_vis] --> [B, n_causal, C_llm]
-        image_features = self.cformer(image_features)
+        image_features = self.cformer(image_features) # transformed to 5120 Dim
         # loss from hf lm model
         loss = self.decoder(image_features, text_input=text_input, text_output=text_output, text_mask=input_mask,
                             output_mask=output_mask)

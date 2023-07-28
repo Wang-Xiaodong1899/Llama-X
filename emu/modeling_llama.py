@@ -437,11 +437,17 @@ class LlamaForReg(transformers.LlamaForCausalLM):
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
             # Flatten the tokens
-            loss_fct = torch.nn.CrossEntropyLoss()
+            loss_fct = torch.nn.CrossEntropyLoss(ignore_index=IGNORE_INDEX)
             loss = loss_fct(shift_logits.view(-1, self.config.vocab_size), shift_labels.view(-1))
+        
+        # regression loss (L2 loss)
+        predict = logits * regress_mask
+        regess_func = torch.nn.MSELoss()
+        regress_loss = regess_func(predict, regress_labels)
 
         return RegressCausalLMOutputWithPast(
             llm_loss=loss,
+            regression_loss=regress_loss,
             logits=logits,
             past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,

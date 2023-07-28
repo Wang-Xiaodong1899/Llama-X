@@ -40,10 +40,20 @@ from utils import *
 from llama.attention import *
 
 IGNORE_INDEX = -100
+DEFAULT_BOS_TOKEN = '<s>'
+DEFAULT_EOS_TOKEN = '</s>'
 DEFAULT_PAD_TOKEN = "[PAD]"
-DEFAULT_EOS_TOKEN = "</s>"
-DEFAULT_BOS_TOKEN = "</s>"
-DEFAULT_UNK_TOKEN = "</s>"
+DEFAULT_UNK_TOKEN = "<unk>"
+
+DEFAULT_IMG_START_TOKEN = "[IMG]"
+DEFAULT_IMG_END_TOKEN = "[/IMG]"
+DEFAULT_IMG_TOKEN = "<image>"
+USER_TOKEN = '[USER]'
+ASSISTANT_TOKEN = '[ASSISTANT]'
+
+image_placeholder = "[IMG]" + "<image>" * 32 + "[/IMG]"
+
+
 PROMPT_DICT = {
     "prompt_input": (
         "Below is an instruction that describes a task, paired with an input that provides further context. "
@@ -59,14 +69,15 @@ PROMPT_DICT = {
 
 class Emu_Trainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
-        # outputs['logits'] -> label_smoother to compute loss
+        
         print(inputs)
-        labels = inputs["label"]
-        input_ids = inputs["input_ids"]
-        attention_mask = inputs["attention_mask"]
-        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-        if labels is not None:
-            loss = self.label_smoother(outputs, labels, shift_labels=True)
+        image_features = inputs["image"] # image 32 features
+        text_input = inputs["input_ids"] # text input_ids
+        input_mask = inputs["input_mask"] # text attention_mask
+        outputs = model(image=None, text_input=text_input, input_mask=input_mask, image_features=image_features)
+        llm_loss = outputs.llm_loss
+        regression_loss = outputs.regression_loss
+        loss = llm_loss + regression_loss
         
         return loss
 
@@ -149,6 +160,7 @@ def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedToken
 
 def preprocess(
     sources: Sequence[str],
+    image_names: Sequence[str],
     targets: Sequence[str],
     tokenizer: transformers.PreTrainedTokenizer,
 ) -> Dict:
@@ -159,7 +171,7 @@ def preprocess(
     labels = copy.deepcopy(input_ids)
     for label, source_len in zip(labels, sources_tokenized["input_ids_lens"]):
         label[:source_len] = IGNORE_INDEX
-    return dict(input_ids=input_ids, label=labels)
+    return dict(input_ids=input_ids, label=labels, image_names=image_names)
 
 
 @dataclass
@@ -176,6 +188,11 @@ class DataCollatorForSupervisedDataset(object):
         )
         labels = [torch.tensor(x) for x in labels]
         labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX)
+        
+        # Add image features
+        image_names = [instance['image_names'] for instance in instances]
+        print(len(image_names))
+        
         return dict(
             input_ids=input_ids,
             label=labels,
@@ -183,20 +200,12 @@ class DataCollatorForSupervisedDataset(object):
         )
 
 def train_tokenize_function(examples, tokenizer):
-    prompt_input, prompt_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]
-    if 'input' in examples:
-        sources = [
-            prompt_input.format_map(dict(instruction=instruction, input=input)) if input != "" \
-            else prompt_no_input.format_map(dict(instruction=instruction)) \
-            for instruction, input in zip(examples['instruction'], examples['input']) 
-        ]
-    else:
-        sources = [
-            prompt_no_input.format_map(dict(instruction=instruction)) \
-            for instruction in examples['instruction']
-        ]
-    targets = [f"{output}{tokenizer.eos_token}" for output in examples['output']]
-    data_dict = preprocess(sources, targets, tokenizer)
+    captions = [output for output in examples['caption']]
+    image_names = [output for output in examples['image_name']]
+    targets = [image_placeholder + tokenizer.eos_token] * len(captions)
+    
+    data_dict = preprocess(captions, image_names, targets, tokenizer)
+    
     return data_dict
 
 class llamaconfig():
@@ -249,29 +258,13 @@ def train():
     # state_dict = torch.load(args.llama_7b_state_dict, map_location="cpu")
     # model_parameters = model.load_state_dict(state_dict)
 
-    # tokenizer = transformers.LlamaTokenizer.from_pretrained(
-    #     model_args.model_name_or_path,
-    #     cache_dir=training_args.cache_dir,
-    #     model_max_length=training_args.model_max_length,
-    #     padding_side="right",
-    #     use_fast=True,
-    # )
-    # if tokenizer.pad_token is None:
-    #     smart_tokenizer_and_embedding_resize(
-    #         special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
-    #         tokenizer=tokenizer,
-    #         model=model,
-    #     )
-    # if "llama" in model_args.model_name_or_path:
-    #     tokenizer.add_special_tokens(
-    #         {
-    #             "eos_token": DEFAULT_EOS_TOKEN,
-    #             "bos_token": DEFAULT_BOS_TOKEN,
-    #             "unk_token": DEFAULT_UNK_TOKEN,
-    #             "pad_token": DEFAULT_UNK_TOKEN,
-    #         }
-    #     )
-    from emu.modeling_llama_adapter import LLaMAForClsAndRegression
+    
+    #TODO model.decoder.tokenizer
+    special_token_list = [DEFAULT_IMG_START_TOKEN, DEFAULT_IMG_END_TOKEN, DEFAULT_IMG_TOKEN, USER_TOKEN,
+                                  ASSISTANT_TOKEN]
+    # lm.tokenizer will be set in initialzation of decoder, No Action Need!
+    
+    from emu.modeling_llama import LLaMAForClsAndRegression
     if isinstance(model.decoder, LLaMAForClsAndRegression):
         model.decoder.tokenizer.padding_side = "right"
 
@@ -287,7 +280,7 @@ def train():
         remove_columns=raw_train_datasets.column_names,
         load_from_cache_file=True, # not args.overwrite_cache
         desc="Running tokenizer on train dataset",
-        fn_kwargs={"tokenizer": tokenizer}
+        fn_kwargs={"tokenizer": model.decoder.tokenizer}
     )
 
     if training_args.local_rank == 0:
@@ -298,14 +291,14 @@ def train():
         for index in random.sample(range(len(train_dataset)), 3):
             print(f"Sample {index} of the training set: {train_dataset[index]}.")
     
-    data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
+    data_collator = DataCollatorForSupervisedDataset(tokenizer=model.decoder.tokenizer)
     data_module = dict(train_dataset=train_dataset, eval_dataset=None, data_collator=data_collator)
 
     #Tell Trainer not to attempt DataParallel
     model.is_parallelizable = True
     model.model_parallel = True
 
-    trainer = Emu_Trainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
+    trainer = Emu_Trainer(model=model, tokenizer=model.decoder.tokenizer, args=training_args, **data_module)
     model.config.use_cache = False
 
     trainer.train()
