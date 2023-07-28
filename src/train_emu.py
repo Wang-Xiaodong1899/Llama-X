@@ -224,35 +224,60 @@ def quick_freeze(model):
 def train():
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-        
-    # model = transformers.AutoModelForCausalLM.from_pretrained(
-    #     model_args.model_name_or_path,
-    #     cache_dir=training_args.cache_dir,
-    # )
-    from emu.modeling_emu import Emu
-    args = llamaconfig()
     
-    emu_config = file2data(args.model_config_file)
-    model = Emu(**emu_config, cast_dtype=torch.float, args=args)
-    
-    print('Patching LoRA...')
-    from peft import LoraConfig, get_peft_model
-    lora_config = LoraConfig(
-        r=16,
-        lora_alpha=16,
-        target_modules=['q_proj', 'k_proj', 'v_proj', 'o_proj'],
-        lora_dropout=0.05,
-        bias="none",
-        task_type="CAUSAL_LM",
+    # Debug by LLaMA
+    model = transformers.AutoModelForCausalLM.from_pretrained(
+        model_args.model_name_or_path,
+        cache_dir=training_args.cache_dir,
     )
-    model.decoder.lm = get_peft_model(model.decoder.lm, lora_config)
-    model = quick_freeze(model)
-    model.visual = model.visual.eval().half()
-    model.ln_visual = model.ln_visual.eval().half()
-    model.cformer = model.cformer.eval().half()
+
+    tokenizer = transformers.LlamaTokenizer.from_pretrained(
+        model_args.model_name_or_path,
+        cache_dir=training_args.cache_dir,
+        model_max_length=training_args.model_max_length,
+        padding_side="right",
+        use_fast=True,
+    )
+    if tokenizer.pad_token is None:
+        smart_tokenizer_and_embedding_resize(
+            special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
+            tokenizer=tokenizer,
+            model=model,
+        )
+    if "llama" in model_args.model_name_or_path:
+        tokenizer.add_special_tokens(
+            {
+                "eos_token": DEFAULT_EOS_TOKEN,
+                "bos_token": DEFAULT_BOS_TOKEN,
+                "unk_token": DEFAULT_UNK_TOKEN,
+            }
+        )
     
-    ckpt = torch.load(args.ckpt_path, map_location="cpu")
-    adaptively_load_state_dict(model, ckpt)
+    # TODO EMU
+    # from emu.modeling_emu import Emu
+    # args = llamaconfig()
+    
+    # emu_config = file2data(args.model_config_file)
+    # model = Emu(**emu_config, cast_dtype=torch.float, args=args)
+    
+    # print('Patching LoRA...')
+    # from peft import LoraConfig, get_peft_model
+    # lora_config = LoraConfig(
+    #     r=16,
+    #     lora_alpha=16,
+    #     target_modules=['q_proj', 'k_proj', 'v_proj', 'o_proj'],
+    #     lora_dropout=0.05,
+    #     bias="none",
+    #     task_type="CAUSAL_LM",
+    # )
+    # model.decoder.lm = get_peft_model(model.decoder.lm, lora_config)
+    # model = quick_freeze(model)
+    # model.visual = model.visual.eval().half()
+    # model.ln_visual = model.ln_visual.eval().half()
+    # model.cformer = model.cformer.eval().half()
+    
+    # ckpt = torch.load(args.ckpt_path, map_location="cpu")
+    # adaptively_load_state_dict(model, ckpt)
     
     print("INFO begin to init llama")
     # state_dict = torch.load(args.llama_7b_state_dict, map_location="cpu")
@@ -264,9 +289,13 @@ def train():
                                   ASSISTANT_TOKEN]
     # lm.tokenizer will be set in initialzation of decoder, No Action Need!
     
-    from emu.modeling_llama import LLaMAForClsAndRegression
-    if isinstance(model.decoder, LLaMAForClsAndRegression):
-        model.decoder.tokenizer.padding_side = "right"
+    # from emu.modeling_llama import LLaMAForClsAndRegression
+    # if isinstance(model.decoder, LLaMAForClsAndRegression):
+    #     model.decoder.tokenizer.padding_side = "right"
+    # tokenizer = model.decoder.tokenizer
+        
+    
+    # model Ingore
 
     raw_train_datasets = load_dataset('json', data_files=data_args.data_path, split="train", cache_dir=training_args.cache_dir)
     if training_args.local_rank > 0: 
@@ -280,7 +309,7 @@ def train():
         remove_columns=raw_train_datasets.column_names,
         load_from_cache_file=True, # not args.overwrite_cache
         desc="Running tokenizer on train dataset",
-        fn_kwargs={"tokenizer": model.decoder.tokenizer}
+        fn_kwargs={"tokenizer": tokenizer}
     )
 
     if training_args.local_rank == 0:
@@ -290,15 +319,15 @@ def train():
         print(len(train_dataset))
         for index in random.sample(range(len(train_dataset)), 3):
             print(f"Sample {index} of the training set: {train_dataset[index]}.")
-    
-    data_collator = DataCollatorForSupervisedDataset(tokenizer=model.decoder.tokenizer)
+    print(f'pad id: {tokenizer.pad_token_id}')
+    data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
     data_module = dict(train_dataset=train_dataset, eval_dataset=None, data_collator=data_collator)
 
     #Tell Trainer not to attempt DataParallel
     model.is_parallelizable = True
     model.model_parallel = True
 
-    trainer = Emu_Trainer(model=model, tokenizer=model.decoder.tokenizer, args=training_args, **data_module)
+    trainer = Emu_Trainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
 
     trainer.train()
     trainer.save_state()
