@@ -224,6 +224,7 @@ deepspeed train.py \
 - Test EMu:
 ```bash
 deepspeed train_emu.py \
+    --model_name_or_path /f_data/G/llama/llama-7b-hf/ \
     --data_path /workspace/coco4Emu.json \
     --output_dir /f_data/G/llama-x/emu \
     --num_train_epochs 3 \
