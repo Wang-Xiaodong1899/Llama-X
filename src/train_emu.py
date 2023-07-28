@@ -212,7 +212,7 @@ class llamaconfig():
     def __init__(self) -> None:
         self.ckpt_path = os.path.join('/f_data/G', "Emu/Emu/Emu-instruct.pt")
         self.instruct = True
-        self.model_config_file = '/workspace/Llama-X/model/emu/Emu-14B.json'
+        self.model_config_file = '/workspace/Llama-X/emu/Emu-14B.json'
         self.max_seq_length = 256
 
 def quick_freeze(model):
