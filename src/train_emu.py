@@ -75,7 +75,7 @@ class Emu_Trainer(Trainer):
         print(inputs)
         image_features = inputs["image"] # image 32 features
         text_input = inputs["input_ids"] # text input_ids
-        input_mask = inputs["input_mask"] # text attention_mask
+        input_mask = inputs["attention_mask"] # text attention_mask
         image = inputs["image"] # image 32 tensor
         outputs = model(image=image, text_input=text_input, input_mask=input_mask)
         llm_loss = outputs.llm_loss
