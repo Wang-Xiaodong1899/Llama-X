@@ -35,8 +35,10 @@ from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 from datasets import load_dataset
-from utils import *
+from torchvision.transforms.functional import InterpolationMode
 
+
+from utils import *
 from llama.attention import *
 
 IGNORE_INDEX = -100
@@ -74,7 +76,8 @@ class Emu_Trainer(Trainer):
         image_features = inputs["image"] # image 32 features
         text_input = inputs["input_ids"] # text input_ids
         input_mask = inputs["input_mask"] # text attention_mask
-        outputs = model(image=None, text_input=text_input, input_mask=input_mask, image_features=image_features)
+        image = inputs["image"] # image 32 tensor
+        outputs = model(image=image, text_input=text_input, input_mask=input_mask)
         llm_loss = outputs.llm_loss
         regression_loss = outputs.regression_loss
         loss = llm_loss + regression_loss
@@ -180,10 +183,15 @@ class DataCollatorForSupervisedDataset(object):
     """Collate examples for supervised fine-tuning."""
 
     tokenizer: transformers.PreTrainedTokenizer
+    transform = transforms.Compose(
+            [
+                transforms.RandomResizedCrop(224, scale=(0.5, 1.0), interpolation=InterpolationMode.BICUBIC),
+                transforms.ToTensor(),
+                transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
+            ]
+        )
 
     def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
-        print(instances[0])
-        print(len(instances))
         input_ids, labels = tuple([instance[key] for instance in instances] for key in ("input_ids", "label"))
         input_ids = [torch.tensor(x) for x in input_ids]
         input_ids = torch.nn.utils.rnn.pad_sequence(
@@ -192,14 +200,23 @@ class DataCollatorForSupervisedDataset(object):
         labels = [torch.tensor(x) for x in labels]
         labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX)
         
+        print(f'input_ids: {input_ids.shape}')
+        
         # Add image features
-        image_names = [instance['image_names'] for instance in instances]
-        print(len(image_names))
+        image_names = [instance['image_names'] for instance in instances] # batchsize [name1, name2]
+        image_tensors = []
+        for name in image_names:
+            path = os.path.join('/f_data/G/dataset/mscoco/train2017', name)
+            image_tensor = self.transform(Image.open(name).convert('RGB'))
+            image_tensors.append(image_tensor)
+        image_tensors = torch.stack(image_tensors, dim=0)
+        print(f'image: {image_tensors.shape}')
         
         return dict(
             input_ids=input_ids,
             label=labels,
             attention_mask=input_ids.ne(self.tokenizer.pad_token_id),
+            image=image_tensors,
         )
 
 def train_tokenize_function(examples, tokenizer):
