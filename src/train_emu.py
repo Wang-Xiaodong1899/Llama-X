@@ -289,7 +289,9 @@ def train():
         task_type="CAUSAL_LM",
     )
     model.decoder.lm = get_peft_model(model.decoder.lm, lora_config)
-    model = quick_freeze(model)
+    
+    model.visual = quick_freeze(model.visual)
+    model.cformer = quick_freeze(model.cformer)
     model.visual = model.visual.eval().half()
     model.ln_visual = model.ln_visual.eval().half()
     model.cformer = model.cformer.eval().half()
