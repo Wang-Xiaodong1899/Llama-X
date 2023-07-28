@@ -10,7 +10,7 @@
         "eva_model_name": "eva-clip-g-14-x",
         "drop_path_rate": 0,
         "xattn": true,
-        "freeze": false
+        "freeze": true
     },
     "multimodal_cfg": {
         "name": "llama-13B",

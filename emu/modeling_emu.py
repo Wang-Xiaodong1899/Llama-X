@@ -34,6 +34,7 @@ class Emu(nn.Module):
     ):
         super().__init__()
 
+        self.config = None
         self.args = args
 
         multimodal_cfg = MultimodalCfg(**multimodal_cfg) if isinstance(multimodal_cfg, dict) else multimodal_cfg
