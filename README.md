@@ -168,10 +168,10 @@ python transformers/src/transformers/models/llama/convert_llama_weights_to_hf.py
 
 - Train LLaMA-7B on DeepSpeed Zero-3:
 ```bash
-deepspeed train_llama.py \
+deepspeed train.py \
     --model_name_or_path /f_data/G/llama/llama-7b-hf/ \
     --data_path ../data/alpaca_data.json \
-    --output_dir /f_data/G/llama-x/llama-7b-ft-ours \
+    --output_dir /f_data/G/llama-x/llama-7b-ft \
     --num_train_epochs 3 \
     --model_max_length 512 \
     --per_device_train_batch_size 64 \
@@ -190,6 +190,7 @@ deepspeed train_llama.py \
     --deepspeed configs/deepspeed_config.json \
     --fp16 True
 ```
+
 - Train LLaMA-7B on DeepSpeed Zero-3 with Multi-nodes
 ```bash
  git pull && export NCCL_IB_DISABLE=1;export NCCL_IBEXT_DISABLE=1 && deepspeed --num_gpus 8 \
@@ -219,6 +220,31 @@ deepspeed train_llama.py \
     --deepspeed configs/deepspeed_config.json \
     --fp16 True
 ```
+
+- Test EMu:
+```bash
+deepspeed train_emu.py \
+    --data_path /workspace/coco4Emu.json \
+    --output_dir /f_data/G/llama-x/emu \
+    --num_train_epochs 3 \
+    --model_max_length 512 \
+    --per_device_train_batch_size 32 \
+    --per_device_eval_batch_size 1 \
+    --gradient_accumulation_steps 1 \
+    --evaluation_strategy "no" \
+    --save_strategy "steps" \
+    --save_steps 100 \
+    --save_total_limit 2 \
+    --learning_rate 2e-5 \
+    --warmup_steps 2 \
+    --logging_steps 2 \
+    --lr_scheduler_type "cosine" \
+    --report_to "tensorboard" \
+    --gradient_checkpointing True \
+    --deepspeed configs/deepspeed_config.json \
+    --fp16 True
+```
+
 
 - The current code of Llama-X support:
     - Fully Finetune: Optimize full LLaMA checkpoint, instead of `Low-Rank Adaptation (LoRA)`.
