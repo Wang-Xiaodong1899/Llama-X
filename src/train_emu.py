@@ -207,7 +207,7 @@ class DataCollatorForSupervisedDataset(object):
         image_tensors = []
         for name in image_names:
             path = os.path.join('/f_data/G/dataset/mscoco/train2017', name)
-            image_tensor = self.transform(Image.open(name).convert('RGB'))
+            image_tensor = self.transform(Image.open(path).convert('RGB'))
             image_tensors.append(image_tensor)
         image_tensors = torch.stack(image_tensors, dim=0)
         print(f'image: {image_tensors.shape}')
