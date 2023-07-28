@@ -291,10 +291,14 @@ def train():
     model.decoder.lm = get_peft_model(model.decoder.lm, lora_config)
     
     model.visual = quick_freeze(model.visual)
+    model.ln_visual = quick_freeze(model.ln_visual)
     model.cformer = quick_freeze(model.cformer)
     model.visual = model.visual.eval().half()
     model.ln_visual = model.ln_visual.eval().half()
     model.cformer = model.cformer.eval().half()
+    
+    # copy config
+    model.config = model.decoder.lm.config
     
     print("loading ckpt...")
     # ckpt = torch.load(args.ckpt_path, map_location="cpu")
