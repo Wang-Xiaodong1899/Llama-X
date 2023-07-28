@@ -12,6 +12,8 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 import sys
+
+from transformers.modeling_outputs import CausalLMOutputWithPast
 sys.path.append('/workspace/Llama-X')
 
 import os
@@ -243,6 +245,9 @@ def quick_unfreeze(model):
         param.requires_grad = True
     return model
 
+class LLMModel(transformers.LLamaModel):
+    
+
 # Add extra modules to LlamaForCausalLM
 class LlamaNUWA(transformers.LlamaForCausalLM):
     def __init__(self, config):
@@ -258,7 +263,40 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
         
         self.vae_emb = nn.Embedding(8192, 256)
         
-        self.pos_ems = None
+        self.image_pos_emb = AxialPositionalEmbedding(4096,
+                                                      axial_shape=(1, 16, 16)) # 16*16
+    
+    def forward(
+        self,
+        image: torch.FloatTensor = None,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[Tuple, CausalLMOutputWithPast]:
+        
+        # Step 1: image tensor -> image tokens, tokens should be add in labels
+        # Step 2: image tokens -> image embedding -> image projection, 256 -> 4096
+        # Step 3: image features + position embedding -> LLM
+        
+        b, c, s, s = image.size()
+        image_tokens = self.vae.get_codebook_indices(image).reshape(b, -1) # should add in labels
+        image_embs = self.vae_emb(image_tokens)
+        image_embs = self.vae_proj(image_embs).reshape(b, -1, 4096)
+        image_embs += self.image_pos_emb(image_embs)
+        
+        
+        
+        
+        
+        return super().forward()
+        
     
 
 def train():
@@ -318,7 +356,6 @@ def train():
         bias="none",
         task_type="CAUSAL_LM",
     )
-    model = get_peft_model(model, lora_config)
     
     model.vae_proj = quick_unfreeze(model.vae_proj)
     
@@ -336,22 +373,20 @@ def train():
     model.vae_emb = quick_freeze(model.vae_emb)
     
     
+    # Apply LoRA to Llama
+    model = get_peft_model(model, lora_config)
     
-    # TODO NEED to add vae_proj to optimizer
     
-    # Add optimizer for special token
-    for idx in special_token_indices:  
-        model.base_model.model.model.embed_tokens.weight[idx].requires_grad = True 
-        
-    from torch.optim import Adam  
-  
-    optimizer = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-3)  
-
+    # Add optimizer for all embeddings
+    model.base_model.model.model.embed_tokens.weight.requires_grad = True 
     
-    # VAE Usage
-    images = images.to(device) # b c s s
-    b, c, s, s = images.size()
-    images = model.vae.get_codebook_indices(images).reshape(b, -1)
+    from torch.optim import AdamW
+    
+    optimizer = AdamW([
+                        *model.base_model.model.model.embed_tokens.parameters(),  
+                        *model.base_model.model.vae_proj.parameters(),
+                        *model.base_model.model.image_pos_emb.parameters(),
+                        ], lr=1e-5) 
     
     
     # model-independent data
@@ -385,7 +420,7 @@ def train():
     model.is_parallelizable = True
     model.model_parallel = True
 
-    trainer = Emu_Trainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
+    trainer = Emu_Trainer(model=model, tokenizer=tokenizer, args=training_args, optimizers=(optimizer, None), **data_module)
     model.config.use_cache = False
 
     trainer.train()

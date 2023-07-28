@@ -494,3 +494,77 @@ def set_seed(seed=42):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
+
+class ParameterList(object):
+    """a mock parameter list object until below issue is resolved
+        https://github.com/pytorch/pytorch/issues/36035
+    """
+
+    def __init__(self, kls, prefix, length):
+        self.ind = 0
+        self.kls = kls
+        self.prefix = prefix
+        self.length = length
+
+    def _keyname(self, prefix, ind):
+        return f'{prefix}_{ind}'
+
+    def append(self, x):
+        setattr(self.kls, self._keyname(self.prefix, self.ind), x)
+        self.ind += 1
+
+    def to_list(self):
+        return [getattr(self.kls, self._keyname(self.prefix, i)) for i in range(self.length)]
+
+from functools import partial, reduce
+
+class AxialPositionalEmbedding(nn.Module):
+    def __init__(self, dim, axial_shape, axial_dims=None):
+        super().__init__()
+
+        self.dim = dim
+        axial_shape = tuple([shape for shape in axial_shape if shape != 1])  # remove the axis whose shape is 1
+        self.shape = axial_shape
+        self.max_seq_len = reduce(lambda x, y: x * y, axial_shape, 1)
+
+        self.summed = axial_dims is None
+        axial_dims = ((dim,) * len(axial_shape)) if self.summed else axial_dims
+
+        assert len(self.shape) == len(
+            axial_dims), 'number of axial dimensions must equal the number of dimensions in the shape'
+        assert self.summed or not self.summed and sum(
+            axial_dims) == dim, f'axial dimensions must sum up to the target dimension {dim}'
+
+        self.weights = ParameterList(self, 'weights', len(axial_shape))
+
+        for ind, (shape, axial_dim) in enumerate(zip(self.shape, axial_dims)):
+            ax_shape = [1] * len(self.shape)
+            ax_shape[ind] = shape
+            ax_shape = (1, *ax_shape, axial_dim)
+            ax_emb = nn.Parameter(torch.zeros(ax_shape).normal_(0, 1))
+            self.weights.append(ax_emb)
+
+    def forward(self, x, idx=None, row_range=None, col_range=None):
+        b, t, e = x.shape
+        assert (t <= self.max_seq_len), f'Sequence length ({t}) must ' \
+                                        f'be less than the maximum sequence length allowed ({self.max_seq_len})'
+        embs = []
+
+        for ax_emb in self.weights.to_list():
+            axial_dim = ax_emb.shape[-1]
+            expand_shape = (b, *self.shape, axial_dim)
+            emb = ax_emb.expand(expand_shape).reshape(b, self.max_seq_len, axial_dim)
+            embs.append(emb)
+        pos_emb = sum(embs) if self.summed else torch.cat(embs, dim=-1)
+
+        if idx is None and row_range is None:
+            return pos_emb[:, :t].to(x)
+        elif idx is not None:
+            return pos_emb[:, idx:idx + 1].to(x)
+        else:
+            rows = torch.arange(row_range[0], row_range[1])
+            cols = torch.arange(col_range[0], col_range[1])
+            coords = torch.stack(torch.meshgrid([rows, cols]), dim=-1).reshape(-1, 2)
+            coords[:, 0] = coords[:, 0] * self.shape[0]
+            pos_idxs = coords.sum(dim=-1)
+            return pos_emb[:, pos_idxs].to(x)
