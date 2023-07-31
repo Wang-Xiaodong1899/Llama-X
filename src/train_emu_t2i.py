@@ -246,25 +246,55 @@ def quick_unfreeze(model):
     return model
 
 class LLMModel(transformers.LLamaModel):
-    
+    pass
+
+from emu.causal_former import CausalFormer
+from emu.model import MultimodalCfg, CLIPVisionCfg, VLadapterCfg, _build_vision_tower
+from emu.transformer import LayerNorm
 
 # Add extra modules to LlamaForCausalLM
 class LlamaNUWA(transformers.LlamaForCausalLM):
-    def __init__(self, config):
+    def __init__(
+        self, 
+        config, 
+        embed_dim,
+        multimodal_cfg: MultimodalCfg,
+        vision_cfg: CLIPVisionCfg,
+        vladapter_cfg: VLadapterCfg,
+        quick_gelu: bool = False,
+        cast_dtype: Optional[torch.dtype] = None,
+        pad_id: int = 0,
+        args=None,
+        apply_lemmatizer=False,
+        prompt=None
+    ):
         super().__init__(config)
-        print('New Image projection layer')
-        self.vae_proj = nn.Linear(256, 4096) #256 -> 4096
         
-        print('Init VQVAE model')
-        vae_cf = '/workspace/GODIVA/config/vae/vqgan/VQGan8192F8.py'
-        vae = import_filename(vae_cf)
-        VQVAE, args_vqvae = vae.Net, vae.args
-        self.vae = VQVAE(args_vqvae, mode='eval')
+        print('Init Image Encoder')
+        multimodal_cfg = MultimodalCfg(**multimodal_cfg) if isinstance(multimodal_cfg, dict) else multimodal_cfg
+        vision_cfg = CLIPVisionCfg(**vision_cfg) if isinstance(vision_cfg, dict) else vision_cfg
+        vladapter_cfg = VLadapterCfg(**vladapter_cfg) if isinstance(vladapter_cfg, dict) else vladapter_cfg
+
+        self.visual = _build_vision_tower(
+            embed_dim=embed_dim,
+            vision_cfg=vision_cfg,
+            cast_dtype=cast_dtype,
+        )
+        if vision_cfg.freeze:
+            self.visual.requires_grad_(False)
+            self.visual = self.visual.eval()
+            
+        norm_layer = partial(LayerNorm, eps=1e-6)
         
-        self.vae_emb = nn.Embedding(8192, 256)
+        self.ln_visual = norm_layer(vision_cfg.width)
+        nn.init.constant_(self.ln_visual.bias, 0)
+        nn.init.constant_(self.ln_visual.weight, 1.0)
         
-        self.image_pos_emb = AxialPositionalEmbedding(4096,
-                                                      axial_shape=(1, 16, 16)) # 16*16
+        self.cformer = CausalFormer(args=args,
+                                  n_causal=vladapter_cfg.n_causal,
+                                  vision_width=vision_cfg.width,
+                                  output_dim=5120) # need specify
+        
     
     def forward(
         self,
@@ -297,17 +327,23 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
         
         return super().forward()
         
-    
+class llamaconfig():
+    def __init__(self) -> None:
+        self.ckpt_path = os.path.join('/f_data/G', "Emu/Emu/Emu-instruct.pt")
+        self.instruct = True
+        self.model_config_file = '/workspace/Llama-X/emu/Emu-14B.json'
+        self.max_seq_length = 256
+
 
 def train():
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     
-    # Debug by LLaMA
-    model = LlamaNUWA.from_pretrained(
-        model_args.model_name_or_path,
-        cache_dir=training_args.cache_dir,
-    )
+    args = llamaconfig()
+    
+    config = llamaconfig.from_pretrained('/f_data/G/llama/llama-13b-hf/')
+    emu_config = file2data('/workspace/Llama-X/emu/Emu-14B.json')
+    model = LlamaNUWA(config=config, **emu_config, cast_dtype=torch.float16)
 
     tokenizer = transformers.LlamaTokenizer.from_pretrained(
         model_args.model_name_or_path,
@@ -345,8 +381,6 @@ def train():
     print(f"[/IMG] token id: {img_end_token_id}")
     special_token_indices = image_token_id + img_token_id + img_end_token_id
     
-    
-
     from peft import LoraConfig, get_peft_model
     lora_config = LoraConfig(
         r=16,
@@ -357,28 +391,23 @@ def train():
         task_type="CAUSAL_LM",
     )
     
-    model.vae_proj = quick_unfreeze(model.vae_proj)
+    model.visual = quick_freeze(model.visual)
+    model.ln_visual = quick_freeze(model.ln_visual)
+    model.cformer = quick_freeze(model.cformer)
+    model.visual = model.visual.eval().half()
+    model.ln_visual = model.ln_visual.eval().half()
+    model.cformer = model.cformer.eval().half()
     
-    # original Llama + LoRA + vae_proj
-    model.print_trainable_parameters()
-    
-    # VQGAN config
-    vae_path = os.path.join('/f_data/G', 'vqg/VQGan8192F8.pth')
-    
-    print(f'init vqvae model from {vae_path}')
-    model.vae.load_state_dict(file2data(vae_path, map_location='cpu'), strict=False)
-    model.vae = quick_freeze(model.vae)
-    
-    model.vae_emb.weight = nn.Parameter(copy.deepcopy(model.vae.quantize.embed.weight))
-    model.vae_emb = quick_freeze(model.vae_emb)
+    # Load Image Encoder checkpoint
+    print("loading ckpt...")
+    # ckpt = torch.load(args.ckpt_path, map_location="cpu")
+    # adaptively_load_state_dict(model, ckpt)
     
     
     # Apply LoRA to Llama
     model = get_peft_model(model, lora_config)
     
     
-    # Add optimizer for all embeddings
-    model.base_model.model.model.embed_tokens.weight.requires_grad = True 
     
     from torch.optim import AdamW
     
