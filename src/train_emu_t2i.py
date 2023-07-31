@@ -249,6 +249,7 @@ def quick_unfreeze(model):
 from emu.causal_former import CausalFormer
 from emu.model import MultimodalCfg, CLIPVisionCfg, VLadapterCfg, _build_vision_tower
 from emu.transformer import LayerNorm
+from transformers.models.llama.configuration_llama import LlamaConfig
 
 # Add extra modules to LlamaForCausalLM
 class LlamaNUWA(transformers.LlamaForCausalLM):
@@ -339,7 +340,7 @@ def train():
     
     args = llamaconfig()
     
-    config = llamaconfig.from_pretrained('/f_data/G/llama/llama-13b-hf/')
+    config = LlamaConfig.from_pretrained('/f_data/G/llama/llama-13b-hf/')
     emu_config = file2data('/workspace/Llama-X/emu/Emu-14B.json')
     model = LlamaNUWA(config=config, **emu_config, cast_dtype=torch.float16)
 
@@ -351,7 +352,8 @@ def train():
         use_fast=True,
     )
     
-    special_token_list = [DEFAULT_IMG_START_TOKEN, DEFAULT_IMG_END_TOKEN, DEFAULT_IMG_TOKEN]
+    special_token_list = [DEFAULT_IMG_START_TOKEN, DEFAULT_IMG_END_TOKEN, DEFAULT_IMG_TOKEN, USER_TOKEN,
+                                  ASSISTANT_TOKEN]
     special_tokens_dict = dict(
             pad_token=DEFAULT_PAD_TOKEN,
             bos_token=DEFAULT_BOS_TOKEN,
@@ -377,7 +379,6 @@ def train():
 
     img_end_token_id = tokenizer.convert_tokens_to_ids(['[/IMG]'])
     print(f"[/IMG] token id: {img_end_token_id}")
-    special_token_indices = image_token_id + img_token_id + img_end_token_id
     
     from peft import LoraConfig, get_peft_model
     lora_config = LoraConfig(
@@ -398,8 +399,20 @@ def train():
     
     # Load Image Encoder checkpoint
     print("loading ckpt...")
-    # ckpt = torch.load(args.ckpt_path, map_location="cpu")
-    # adaptively_load_state_dict(model, ckpt)
+    ckpt = torch.load(args.ckpt_path, map_location="cpu")
+    
+    new_state_dicts = OrderedDict()
+    
+    # directly load, visual, ln_visual, cformer
+    for k, v in ckpt.items():
+        if 'decoder.lm.base_model.model.model' in k: # embed_tokens, layers
+            new_state_dicts[k.replace('decoder.lm.base_model.model.model', 'model')] = v
+        elif 'decoder.lm.base_model.model.lm_head' in k: # lm_head
+            new_state_dicts[k.replace('decoder.lm.base_model.model.lm_head', 'lm_head')] = v
+        else:
+            new_state_dicts[k] = v
+    
+    adaptively_load_state_dict(model, new_state_dicts)
     
     
     # Apply LoRA to Llama
