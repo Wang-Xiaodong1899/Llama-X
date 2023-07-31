@@ -245,8 +245,6 @@ def quick_unfreeze(model):
         param.requires_grad = True
     return model
 
-class LLMModel(transformers.LLamaModel):
-    pass
 
 from emu.causal_former import CausalFormer
 from emu.model import MultimodalCfg, CLIPVisionCfg, VLadapterCfg, _build_vision_tower
