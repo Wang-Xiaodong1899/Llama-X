@@ -293,6 +293,7 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
                                   n_causal=vladapter_cfg.n_causal,
                                   vision_width=vision_cfg.width,
                                   output_dim=5120) # need specify
+        self.stu_regress_head = nn.Linear(5120, 5120, bias=False)
         
     
     def forward(
@@ -389,6 +390,7 @@ def train():
         bias="none",
         task_type="CAUSAL_LM",
     )
+    model = get_peft_model(model, lora_config)
     
     model.visual = quick_freeze(model.visual)
     model.ln_visual = quick_freeze(model.ln_visual)
@@ -401,32 +403,33 @@ def train():
     print("loading ckpt...")
     ckpt = torch.load(args.ckpt_path, map_location="cpu")
     
+    # Apply LoRA to Llama
+    model = get_peft_model(model, lora_config)
+    
     new_state_dicts = OrderedDict()
     
     # directly load, visual, ln_visual, cformer
     for k, v in ckpt.items():
         if 'decoder.lm.base_model.model.model' in k: # embed_tokens, layers
-            new_state_dicts[k.replace('decoder.lm.base_model.model.model', 'model')] = v
+            new_state_dicts[k.replace('decoder.lm.base_model.model.model', 'base_model.model.model')] = v
         elif 'decoder.lm.base_model.model.lm_head' in k: # lm_head
-            new_state_dicts[k.replace('decoder.lm.base_model.model.lm_head', 'lm_head')] = v
+            new_state_dicts[k.replace('decoder.lm.base_model.model.lm_head', 'base_model.model.lm_head')] = v
+        elif 'decoder.lm.base_model.model.stu_regress_head.weight' in k: # stu_regress_head
+            new_state_dicts['base_model.model.stu_regress_head.weight'] = v
         else:
-            new_state_dicts[k] = v
+            new_state_dicts['base_model.model.'+k] = v
     
     adaptively_load_state_dict(model, new_state_dicts)
     
-    
-    # Apply LoRA to Llama
-    model = get_peft_model(model, lora_config)
-    
-    
+    # if we only finetune the LoRA adapter, we don't need to specify the optimizer
     
     from torch.optim import AdamW
     
-    optimizer = AdamW([
-                        *model.base_model.model.model.embed_tokens.parameters(),  
-                        *model.base_model.model.vae_proj.parameters(),
-                        *model.base_model.model.image_pos_emb.parameters(),
-                        ], lr=1e-5) 
+    # optimizer = AdamW([
+    #                     *model.base_model.model.model.embed_tokens.parameters(),  
+    #                     *model.base_model.model.vae_proj.parameters(),
+    #                     *model.base_model.model.image_pos_emb.parameters(),
+    #                     ], lr=1e-5) 
     
     
     # model-independent data
@@ -460,7 +463,9 @@ def train():
     model.is_parallelizable = True
     model.model_parallel = True
 
-    trainer = Emu_Trainer(model=model, tokenizer=tokenizer, args=training_args, optimizers=(optimizer, None), **data_module)
+    # trainer = Emu_Trainer(model=model, tokenizer=tokenizer, args=training_args, optimizers=(optimizer, None), **data_module)
+    trainer = Emu_Trainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
+    
     model.config.use_cache = False
 
     trainer.train()
