@@ -73,15 +73,13 @@ PROMPT_DICT = {
 
 class Emu_Trainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
-        image_features = inputs["image"] # image 32 features
         text_input = inputs["input_ids"] # text input_ids
         input_mask = inputs["attention_mask"] # text attention_mask
+        labels = inputs["label"] # text label
         image = inputs["image"] # image 32 tensor
-        outputs = model(image=image, text_input=text_input, input_mask=input_mask)
-        llm_loss = outputs.llm_loss
-        regression_loss = outputs.regression_loss
-        loss = llm_loss + regression_loss
-        
+        outputs = model(image=image, input_ids=text_input, attention_mask=input_mask,
+                        labels=labels, return_dict=False)
+        loss = outputs[0]
         return loss
 
 
@@ -348,9 +346,9 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
             past_key_values=past_key_values, inputs_embeds=inputs_embeds, labels=labels,
             use_cache=use_cache, output_attentions=output_attentions, 
             output_hidden_states=output_hidden_states, return_dict=return_dict
-            )
+        )
         
-        
+        # return (loss,) + (logits,) + outputs[1:]
         return outputs
         
 class llamaconfig():
