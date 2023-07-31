@@ -294,6 +294,7 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
                                   vision_width=vision_cfg.width,
                                   output_dim=5120) # need specify
         self.stu_regress_head = nn.Linear(5120, 5120, bias=False)
+        self.tokenizer = None
         
     
     def forward(
@@ -311,21 +312,46 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         
-        # Step 1: image tensor -> image tokens, tokens should be add in labels
-        # Step 2: image tokens -> image embedding -> image projection, 256 -> 4096
-        # Step 3: image features + position embedding -> LLM
+        # Step 1: image tensor to image causal features
+        if image is not None:
+            image = image.to(dtype=torch.float16)
+            image_features = self.ln_visual(self.visual.forward_features(image))
+            image_features = self.cformer(image_features).squeeze().to(dtype=torch.float16)
         
-        b, c, s, s = image.size()
-        image_tokens = self.vae.get_codebook_indices(image).reshape(b, -1) # should add in labels
-        image_embs = self.vae_emb(image_tokens)
-        image_embs = self.vae_proj(image_embs).reshape(b, -1, 4096)
-        image_embs += self.image_pos_emb(image_embs)
+        # Step 2: insert image features to inputs_embeds
+        img_token_id = self.tokenizer.convert_tokens_to_ids(["<image>"])[0]  # 32003
+        img_token_idx_list = input_ids.eq(img_token_id).squeeze() 
+        inputs_embeds = self.model.model.embed_tokens(input_ids)
+        
+        if image is not None:
+            image_features = image_features.reshape(-1, image_features.shape[-1])
+            inputs_embeds[img_token_idx_list] = image_features # insert b*L image features to right position
+        
+        # labels, attention_mask
+        # suppose i2t task, labels = input_ids shift
+        # specify following code
+        #     forward(
+        #     self,
+        #     input_ids: torch.LongTensor = None,
+        #     attention_mask: Optional[torch.Tensor] = None,
+        #     position_ids: Optional[torch.LongTensor] = None,
+        #     past_key_values: Optional[List[torch.FloatTensor]] = None,
+        #     inputs_embeds: Optional[torch.FloatTensor] = None,
+        #     labels: Optional[torch.LongTensor] = None,
+        #     use_cache: Optional[bool] = None,
+        #     output_attentions: Optional[bool] = None,
+        #     output_hidden_states: Optional[bool] = None,
+        #     return_dict: Optional[bool] = None,
+        # ) -> Union[Tuple, CausalLMOutputWithPast]:```
+        outputs = super().forward(
+            input_ids=None, attention_mask=attention_mask, position_ids=position_ids, 
+            past_key_values=past_key_values, inputs_embeds=inputs_embeds, labels=labels,
+            use_cache=use_cache, output_attentions=output_attentions, 
+            output_hidden_states=output_hidden_states, return_dict=return_dict
+            )
         
         
-        
-        
-        
-        return super().forward()
+        return outputs
         
 class llamaconfig():
     def __init__(self) -> None:
