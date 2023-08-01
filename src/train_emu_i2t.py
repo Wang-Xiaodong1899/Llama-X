@@ -40,7 +40,7 @@ from datasets import load_dataset
 from torchvision.transforms.functional import InterpolationMode
 
 
-from .utils import *
+from src.utils import *
 from llama.attention import *
 
 IGNORE_INDEX = -100

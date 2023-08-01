@@ -222,7 +222,7 @@ deepspeed train.py \
 
 - Test EMu i2t:
 ```bash
-deepspeed train_emu.py \
+deepspeed train_emu_i2t.py \
     --model_name_or_path /f_data/G/llama/llama-13b-hf/ \
     --data_path /workspace/Emu_i2t_coco.json \
     --output_dir /f_data/G/llama-x/emu-i2t \
