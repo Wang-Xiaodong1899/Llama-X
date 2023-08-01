@@ -437,7 +437,8 @@ def train():
     new_state_dicts = OrderedDict()
     
     # directly load, visual, ln_visual, cformer
-    for k, v in ckpt.items():
+    for ke, v in ckpt.items():
+        k = ke
         if 'decoder.lm.base_model.model.model' in k: # embed_tokens, layers
             new_state_dicts[k.replace('decoder.lm.base_model.model.model', 'base_model.model.model')] = v
         elif 'decoder.lm.base_model.model.lm_head' in k: # lm_head
