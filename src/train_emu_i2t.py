@@ -208,11 +208,11 @@ class DataCollatorForSupervisedDataset(object):
             image_tensor = self.transform(Image.open(path).convert('RGB'))
             image_tensors.append(image_tensor)
         image_tensors = torch.stack(image_tensors, dim=0)
-        print(f'image: {image_tensors.shape}')
+        # print(f'image: {image_tensors.shape}')
         image_tensors.requires_grad = True
-        print(f'image: {image_tensors.requires_grad}')
-        print(f'input_ids: {input_ids.requires_grad}')
-        print(f'label: {labels.requires_grad}')
+        # print(f'image: {image_tensors.requires_grad}')
+        # print(f'input_ids: {input_ids.requires_grad}')
+        # print(f'label: {labels.requires_grad}')
         return dict(
             input_ids=input_ids,
             label=labels,
@@ -322,7 +322,7 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
         # Step 2: insert image features to inputs_embeds
         image_token_id = self.tokenizer.convert_tokens_to_ids(["<image>"])[0]  # 32003
         inputs_embeds = self.model.embed_tokens(input_ids)
-        print(f'inputs_embeds: {inputs_embeds.shape}')
+        # print(f'inputs_embeds: {inputs_embeds.shape}')
         
         all_image_indices = (input_ids == image_token_id).to(image_features.device)
         print(f'all_image_indices: {all_image_indices.shape}')
@@ -351,7 +351,7 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
             input_ids=None, attention_mask=attention_mask, position_ids=position_ids, 
             past_key_values=past_key_values, inputs_embeds=inputs_embeds, labels=labels,
             use_cache=use_cache, output_attentions=output_attentions, 
-            output_hidden_states=output_hidden_states, return_dict=return_dict
+            output_hidden_states=True, return_dict=return_dict
         )
         
         # return (loss,) + (logits,) + outputs[1:]
