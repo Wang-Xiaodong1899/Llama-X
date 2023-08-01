@@ -245,6 +245,30 @@ deepspeed train_emu_i2t.py \
     --fp16 True
 ```
 
+- Test EMu t2i:
+```bash
+deepspeed train_emu_t2i.py \
+    --model_name_or_path /f_data/G/llama/llama-13b-hf/ \
+    --data_path /workspace/Emu_i2t_coco.json \
+    --output_dir /f_data/G/llama-x/emu-t2i \
+    --num_train_epochs 3 \
+    --model_max_length 512 \
+    --per_device_train_batch_size 32 \
+    --per_device_eval_batch_size 1 \
+    --gradient_accumulation_steps 1 \
+    --evaluation_strategy "no" \
+    --save_strategy "steps" \
+    --save_steps 200 \
+    --save_total_limit 2 \
+    --learning_rate 1e-6 \
+    --warmup_steps 2 \
+    --logging_steps 2 \
+    --lr_scheduler_type "cosine" \
+    --report_to "tensorboard" \
+    --gradient_checkpointing True \
+    --deepspeed configs/deepspeed_config.json \
+    --fp16 True
+```
 
 - The current code of Llama-X support:
     - Fully Finetune: Optimize full LLaMA checkpoint, instead of `Low-Rank Adaptation (LoRA)`.
