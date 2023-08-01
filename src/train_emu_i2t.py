@@ -418,7 +418,6 @@ def train():
         bias="none",
         task_type="CAUSAL_LM",
     )
-    model = get_peft_model(model, lora_config)
     
     model.visual = quick_freeze(model.visual)
     model.ln_visual = quick_freeze(model.ln_visual)
