@@ -57,6 +57,8 @@ ASSISTANT_TOKEN = '[ASSISTANT]'
 
 image_placeholder = "[IMG]" + "<image>" * 32 + "[/IMG]"
 
+image_system_msg = "You will be presented with an image: [IMG]ImageContent[/IMG]. You will be able to see the image after I provide it to you. Please answer my questions based on the given image."
+
 
 PROMPT_DICT = {
     "prompt_input": (
@@ -223,7 +225,9 @@ class DataCollatorForSupervisedDataset(object):
 def train_tokenize_function(examples, tokenizer):
     captions = [output + tokenizer.eos_token for output in examples['caption']]
     image_names = [output for output in examples['image_name']]
-    targets = [image_placeholder] * len(captions)
+    # targets = [image_placeholder] * len(captions)
+    prompt = f"{image_system_msg} [USER]: {image_placeholder}Please provide an accurate and concise description of the given image. [ASSISTANT]: The image depicts a photo of".strip()
+    targets = [prompt] * len(captions)
     
     data_dict = preprocess(targets, image_names, captions, tokenizer)
     
