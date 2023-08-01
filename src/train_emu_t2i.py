@@ -314,16 +314,18 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
         if image is not None:
             image = image.to(dtype=torch.float16)
             image_features = self.ln_visual(self.visual.forward_features(image))
-            image_features = self.cformer(image_features).squeeze().to(dtype=torch.float16)
+            image_features = self.cformer(image_features).to(dtype=torch.float16)
         
         # Step 2: insert image features to inputs_embeds
-        img_token_id = self.tokenizer.convert_tokens_to_ids(["<image>"])[0]  # 32003
-        img_token_idx_list = input_ids.eq(img_token_id).squeeze() 
+        image_token_id = self.tokenizer.convert_tokens_to_ids(["<image>"])[0]  # 32003
         inputs_embeds = self.model.model.embed_tokens(input_ids)
+        print(f'inputs_embeds: {inputs_embeds.shape}')
         
-        if image is not None:
-            image_features = image_features.reshape(-1, image_features.shape[-1])
-            inputs_embeds[img_token_idx_list] = image_features # insert b*L image features to right position
+        all_image_indices = (input_ids == image_token_id).to(image_features.device)
+        image_features = image_features.reshape(-1, image_features.shape[-1])
+        print(f'image_features: {image_features.shape}')
+        inputs_embeds[all_image_indices] = image_features
+        
         
         # labels, attention_mask
         # suppose i2t task, labels = input_ids shift
