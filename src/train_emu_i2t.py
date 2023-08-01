@@ -318,7 +318,7 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
         
         # Step 2: insert image features to inputs_embeds
         image_token_id = self.tokenizer.convert_tokens_to_ids(["<image>"])[0]  # 32003
-        inputs_embeds = self.model.model.embed_tokens(input_ids)
+        inputs_embeds = self.model.embed_tokens(input_ids)
         print(f'inputs_embeds: {inputs_embeds.shape}')
         
         all_image_indices = (input_ids == image_token_id).to(image_features.device)
