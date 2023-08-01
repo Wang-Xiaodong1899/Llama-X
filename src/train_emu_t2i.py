@@ -73,11 +73,11 @@ PROMPT_DICT = {
 
 class Emu_Trainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
-        text_input = inputs["input_ids"] # text input_ids
-        input_mask = inputs["attention_mask"] # text attention_mask
+        input_ids = inputs["input_ids"] # text input_ids
+        attention_mask = inputs["attention_mask"] # text attention_mask
         labels = inputs["label"] # text label
         image = inputs["image"] # image 32 tensor
-        outputs = model(image=image, input_ids=text_input, attention_mask=input_mask,
+        outputs = model(image=image, input_ids=input_ids, attention_mask=attention_mask,
                         labels=labels, return_dict=False)
         loss = outputs[0]
         return loss
