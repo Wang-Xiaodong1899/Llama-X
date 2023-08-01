@@ -40,7 +40,7 @@ from datasets import load_dataset
 from torchvision.transforms.functional import InterpolationMode
 
 
-from .utils import *
+from src import *
 from llama.attention import *
 
 IGNORE_INDEX = -100
@@ -208,8 +208,11 @@ class DataCollatorForSupervisedDataset(object):
             image_tensor = self.transform(Image.open(path).convert('RGB'))
             image_tensors.append(image_tensor)
         image_tensors = torch.stack(image_tensors, dim=0)
-        print(f'image: {image_tensors.shape}')
-        
+        # print(f'image: {image_tensors.shape}')
+        image_tensors.requires_grad = True
+        # print(f'image: {image_tensors.requires_grad}')
+        # print(f'input_ids: {input_ids.requires_grad}')
+        # print(f'label: {labels.requires_grad}')
         return dict(
             input_ids=input_ids,
             label=labels,
@@ -218,11 +221,11 @@ class DataCollatorForSupervisedDataset(object):
         )
 
 def train_tokenize_function(examples, tokenizer):
-    captions = [output for output in examples['caption']]
+    captions = [output + tokenizer.eos_token for output in examples['caption']]
     image_names = [output for output in examples['image_name']]
-    targets = [image_placeholder + tokenizer.eos_token] * len(captions)
+    targets = [image_placeholder] * len(captions)
     
-    data_dict = preprocess(captions, image_names, targets, tokenizer)
+    data_dict = preprocess(targets, image_names, captions, tokenizer)
     
     return data_dict
 
@@ -318,10 +321,15 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
         
         # Step 2: insert image features to inputs_embeds
         image_token_id = self.tokenizer.convert_tokens_to_ids(["<image>"])[0]  # 32003
-        inputs_embeds = self.model.model.embed_tokens(input_ids)
-        print(f'inputs_embeds: {inputs_embeds.shape}')
+        inputs_embeds = self.model.embed_tokens(input_ids)
+        # print(f'inputs_embeds: {inputs_embeds.shape}')
+        
+        img_token_id = self.tokenizer.convert_tokens_to_ids(['[IMG]'])[0]
+
+        img_end_token_id = self.tokenizer.convert_tokens_to_ids(['[/IMG]'])[0]
         
         all_image_indices = (input_ids == image_token_id).to(image_features.device)
+        print(f'all_image_indices: {all_image_indices.shape}')
         image_features = image_features.reshape(-1, image_features.shape[-1])
         print(f'image_features: {image_features.shape}')
         inputs_embeds[all_image_indices] = image_features
@@ -347,10 +355,25 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
             input_ids=None, attention_mask=attention_mask, position_ids=position_ids, 
             past_key_values=past_key_values, inputs_embeds=inputs_embeds, labels=labels,
             use_cache=use_cache, output_attentions=output_attentions, 
-            output_hidden_states=output_hidden_states, return_dict=return_dict
+            output_hidden_states=True, return_dict=return_dict
         )
         
-        # return (loss,) + (logits,) + outputs[1:]
+        # return (loss,) + (logits,) + all_hidden_states
+        
+        # hidden_state -> stu_regress_head -> logits
+        hidden_state = outputs[2][-1]
+        regress_logits = self.stu_regress_head(hidden_state)
+        
+        regress_label_mask = ((input_ids == image_token_id) + (input_ids == img_end_token_id)).to(regress_logits.device)
+        regress_labels = inputs_embeds[regress_label_mask]
+        
+        regress_mask = ((input_ids == image_token_id) + (input_ids == img_token_id)).to(regress_logits.device)
+        
+        predict = regress_logits * regress_mask
+        regess_func = torch.nn.MSELoss()
+        regress_loss = regess_func(predict, regress_labels)
+        
+        
         return outputs
         
 class llamaconfig():
@@ -394,6 +417,8 @@ def train():
             tokenizer=tokenizer,
             model=model,
         )
+    model.tokenizer = tokenizer # add tokenizer to model
+    
     model.model.embed_tokens.padding_idx = tokenizer.pad_token_id
     print(f"The Special Tokens: {tokenizer.special_tokens_map}")
     print(f"Vocab Size: {len(tokenizer)}")
@@ -416,7 +441,6 @@ def train():
         bias="none",
         task_type="CAUSAL_LM",
     )
-    model = get_peft_model(model, lora_config)
     
     model.visual = quick_freeze(model.visual)
     model.ln_visual = quick_freeze(model.ln_visual)
@@ -435,7 +459,8 @@ def train():
     new_state_dicts = OrderedDict()
     
     # directly load, visual, ln_visual, cformer
-    for k, v in ckpt.items():
+    for ke, v in ckpt.items():
+        k = ke
         if 'decoder.lm.base_model.model.model' in k: # embed_tokens, layers
             new_state_dicts[k.replace('decoder.lm.base_model.model.model', 'base_model.model.model')] = v
         elif 'decoder.lm.base_model.model.lm_head' in k: # lm_head

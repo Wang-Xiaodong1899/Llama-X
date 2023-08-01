@@ -354,7 +354,10 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
             output_hidden_states=True, return_dict=return_dict
         )
         
-        # return (loss,) + (logits,) + outputs[1:]
+        # return (loss,) + (logits,) + all_hidden_states
+        
+        # hidden_state -> stu_regress_head -> logits
+        
         return outputs
         
 class llamaconfig():
