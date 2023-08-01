@@ -568,3 +568,61 @@ class AxialPositionalEmbedding(nn.Module):
             coords[:, 0] = coords[:, 0] * self.shape[0]
             pos_idxs = coords.sum(dim=-1)
             return pos_emb[:, pos_idxs].to(x)
+
+
+def data2file(data, filename, type=None, override=False, printable=False, **kwargs):
+    dirname, rootname, extname = split_filename(filename)
+    print_did_not_save_flag = True
+    if type:
+        extname = type
+    if not os.path.exists(dirname):
+        os.makedirs(dirname, exist_ok=True)
+
+    if not os.path.exists(filename) or override:
+        if extname == 'pkl':
+            with open(filename, 'wb') as f:
+                pickle.dump(data, f)
+        elif extname == 'msg':
+            with open(filename, 'wb') as f:
+                msgpack.dump(data, f)
+        elif extname == 'csv':
+            with open(filename, 'w') as f:
+                writer = csv.writer(f)
+                writer.writerows(data)
+        elif extname == 'json':
+            with open(filename, 'w') as f:
+                json.dump(data, f)
+        elif extname == 'npy':
+            np.save(filename, data)
+        elif extname in ['jpg', 'png', 'jpeg']:
+            utils.save_image(data, filename, **kwargs)
+        elif extname == 'gif':
+            if not kwargs.get('fps'):
+                raise DeprecationWarning("duration is deprecated, please specify fps directly.")
+            imageio.mimsave(filename, data, format='GIF', fps=kwargs.get('fps'))
+        # elif extname == 'ckpt':
+        #     tf.train.Saver().save(data, filename)
+        # elif extname == 'jpg' or extname == 'png':
+        #     plt.imsave(filename, data)
+        elif extname == 'pth':
+            torch.save(data, filename)
+        elif extname == 'txt':
+            if kwargs is None:
+                kwargs = {}
+            max_step = kwargs.get('max_step')
+            if max_step is None:
+                max_step = np.Infinity
+
+            with open(filename, 'w', encoding='utf-8') as f:
+                for i, e in enumerate(data):
+                    if i < max_step:
+                        f.write(str(e) + '\n')
+                    else:
+                        break
+        else:
+            raise ValueError('type can only support h5, csv, json, sess')
+        if printable: logger.info('Saved data to %s' % os.path.abspath(filename))
+    else:
+        if print_did_not_save_flag: logger.info(
+            'Did not save data to %s because file exists and override is False' % os.path.abspath(
+                filename))
