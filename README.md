@@ -237,7 +237,7 @@ deepspeed train_emu_i2t.py \
     --save_total_limit 2 \
     --learning_rate 1e-6 \
     --warmup_steps 2 \
-    --logging_steps 2 \
+    --logging_steps 10 \
     --lr_scheduler_type "cosine" \
     --report_to "tensorboard" \
     --gradient_checkpointing True \
