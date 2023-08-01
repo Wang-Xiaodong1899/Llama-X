@@ -209,7 +209,10 @@ class DataCollatorForSupervisedDataset(object):
             image_tensors.append(image_tensor)
         image_tensors = torch.stack(image_tensors, dim=0)
         print(f'image: {image_tensors.shape}')
-        
+        image_tensors.requires_grad = True
+        print(f'image: {image_tensors.requires_grad}')
+        print(f'input_ids: {input_ids.requires_grad}')
+        print(f'label: {labels.requires_grad}')
         return dict(
             input_ids=input_ids,
             label=labels,
@@ -428,7 +431,7 @@ def train():
     
     # Load Image Encoder checkpoint
     print("loading ckpt...")
-    ckpt = torch.load(args.ckpt_path, map_location="cpu")
+    # ckpt = torch.load(args.ckpt_path, map_location="cpu")
     
     # Apply LoRA to Llama
     model = get_peft_model(model, lora_config)
@@ -436,18 +439,18 @@ def train():
     new_state_dicts = OrderedDict()
     
     # directly load, visual, ln_visual, cformer
-    for ke, v in ckpt.items():
-        k = ke
-        if 'decoder.lm.base_model.model.model' in k: # embed_tokens, layers
-            new_state_dicts[k.replace('decoder.lm.base_model.model.model', 'base_model.model.model')] = v
-        elif 'decoder.lm.base_model.model.lm_head' in k: # lm_head
-            new_state_dicts[k.replace('decoder.lm.base_model.model.lm_head', 'base_model.model.lm_head')] = v
-        elif 'decoder.lm.base_model.model.stu_regress_head.weight' in k: # stu_regress_head
-            new_state_dicts['base_model.model.stu_regress_head.weight'] = v
-        else:
-            new_state_dicts['base_model.model.'+k] = v
+    # for ke, v in ckpt.items():
+    #     k = ke
+    #     if 'decoder.lm.base_model.model.model' in k: # embed_tokens, layers
+    #         new_state_dicts[k.replace('decoder.lm.base_model.model.model', 'base_model.model.model')] = v
+    #     elif 'decoder.lm.base_model.model.lm_head' in k: # lm_head
+    #         new_state_dicts[k.replace('decoder.lm.base_model.model.lm_head', 'base_model.model.lm_head')] = v
+    #     elif 'decoder.lm.base_model.model.stu_regress_head.weight' in k: # stu_regress_head
+    #         new_state_dicts['base_model.model.stu_regress_head.weight'] = v
+    #     else:
+    #         new_state_dicts['base_model.model.'+k] = v
     
-    adaptively_load_state_dict(model, new_state_dicts)
+    # adaptively_load_state_dict(model, new_state_dicts)
     
     # if we only finetune the LoRA adapter, we don't need to specify the optimizer
     
