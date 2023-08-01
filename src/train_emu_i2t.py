@@ -394,6 +394,8 @@ def train():
             tokenizer=tokenizer,
             model=model,
         )
+    model.tokenizer = tokenizer # add tokenizer to model
+    
     model.model.embed_tokens.padding_idx = tokenizer.pad_token_id
     print(f"The Special Tokens: {tokenizer.special_tokens_map}")
     print(f"Vocab Size: {len(tokenizer)}")
