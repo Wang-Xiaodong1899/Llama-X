@@ -79,7 +79,7 @@ class Emu_Trainer(Trainer):
         image = inputs["image"] # image 32 tensor
         outputs = model(image=image, input_ids=input_ids, attention_mask=attention_mask,
                         labels=labels, return_dict=False)
-        loss = outputs[0]
+        loss = outputs[1]
         return loss
 
 
@@ -221,11 +221,11 @@ class DataCollatorForSupervisedDataset(object):
         )
 
 def train_tokenize_function(examples, tokenizer):
-    captions = [output + tokenizer.eos_token for output in examples['caption']]
+    captions = [output for output in examples['caption']]
     image_names = [output for output in examples['image_name']]
-    targets = [image_placeholder] * len(captions)
+    targets = [image_placeholder + tokenizer.eos_token] * len(captions)
     
-    data_dict = preprocess(targets, image_names, captions, tokenizer)
+    data_dict = preprocess(captions, image_names, targets, tokenizer)
     
     return data_dict
 
@@ -373,8 +373,9 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
         regess_func = torch.nn.MSELoss()
         regress_loss = regess_func(predict, regress_labels)
         
+        token_loss = outputs[0]
         
-        return outputs
+        return (token_loss, regress_loss)
         
 class llamaconfig():
     def __init__(self) -> None:
@@ -473,6 +474,14 @@ def train():
     adaptively_load_state_dict(model, new_state_dicts)
     
     # if we only finetune the LoRA adapter, we don't need to specify the optimizer
+    
+    #LoRA
+    model.print_trainable_parameters() # only LoRA
+    
+    model.stu_regress_head.weight.requires_grad = True
+    
+    model.print_trainable_parameters() # Add Student regress
+    
     
     from torch.optim import AdamW
     

@@ -233,9 +233,9 @@ deepspeed train_emu_i2t.py \
     --gradient_accumulation_steps 1 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
-    --save_steps 1000 \
+    --save_steps 200 \
     --save_total_limit 2 \
-    --learning_rate 2e-5 \
+    --learning_rate 1e-6 \
     --warmup_steps 2 \
     --logging_steps 2 \
     --lr_scheduler_type "cosine" \
