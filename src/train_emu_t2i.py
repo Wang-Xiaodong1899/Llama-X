@@ -368,8 +368,12 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
         regress_labels = inputs_embeds[regress_label_mask]
         
         regress_mask = ((input_ids == image_token_id) + (input_ids == img_token_id)).to(regress_logits.device)
-        
-        predict = regress_logits * regress_mask
+        print(f'regress_mask: {regress_mask.shape}')
+        print(f'regress_logits: {regress_logits.shape}')
+        print(f'regress_labels: {regress_labels.shape}')
+        regress_mask = regress_mask.unsqueeze(-1)
+        predict = regress_logits * regress_mask.detech()
+        print(f'predict: {predict.shape}')
         regess_func = torch.nn.MSELoss()
         regress_loss = regess_func(predict, regress_labels)
         
