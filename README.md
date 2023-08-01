@@ -225,7 +225,7 @@ deepspeed train.py \
 deepspeed train_emu_i2t.py \
     --model_name_or_path /f_data/G/llama/llama-13b-hf/ \
     --data_path /workspace/Emu_i2t_coco.json \
-    --output_dir /f_data/G/llama-x/emu-i2t1 \
+    --output_dir /f_data/G/llama-x/emu-i2ttest \
     --num_train_epochs 3 \
     --model_max_length 512 \
     --per_device_train_batch_size 32 \
@@ -233,7 +233,7 @@ deepspeed train_emu_i2t.py \
     --gradient_accumulation_steps 1 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
-    --save_steps 200 \
+    --save_steps 500 \
     --save_total_limit 2 \
     --learning_rate 1e-6 \
     --warmup_steps 2 \
