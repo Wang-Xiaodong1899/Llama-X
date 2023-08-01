@@ -198,7 +198,7 @@ class DataCollatorForSupervisedDataset(object):
         labels = [torch.tensor(x) for x in labels]
         labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX)
         
-        print(f'input_ids: {input_ids.shape}')
+        # print(f'input_ids: {input_ids.shape}')
         
         # Add image features
         image_names = [instance['image_names'] for instance in instances] # batchsize [name1, name2]
@@ -329,9 +329,9 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
         img_end_token_id = self.tokenizer.convert_tokens_to_ids(['[/IMG]'])[0]
         
         all_image_indices = (input_ids == image_token_id).to(image_features.device)
-        print(f'all_image_indices: {all_image_indices.shape}')
+        # print(f'all_image_indices: {all_image_indices.shape}')
         image_features = image_features.reshape(-1, image_features.shape[-1])
-        print(f'image_features: {image_features.shape}')
+        # print(f'image_features: {image_features.shape}')
         inputs_embeds[all_image_indices] = image_features
         
         
@@ -368,12 +368,12 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
         regress_labels = inputs_embeds[regress_label_mask]
         
         regress_mask = ((input_ids == image_token_id) + (input_ids == img_token_id)).to(regress_logits.device)
-        print(f'regress_mask: {regress_mask.shape}')
-        print(f'regress_logits: {regress_logits.shape}')
-        print(f'regress_labels: {regress_labels.shape}') # bs* 33,  5120
+        # print(f'regress_mask: {regress_mask.shape}')
+        # print(f'regress_logits: {regress_logits.shape}')
+        # print(f'regress_labels: {regress_labels.shape}') # bs* 33,  5120
         regress_mask = regress_mask.detach()
         predict = regress_logits[regress_mask] # bs* 33,  5120
-        print(f'predict: {predict.shape}')
+        # print(f'predict: {predict.shape}')
         regess_func = torch.nn.MSELoss()
         regress_loss = regess_func(predict, regress_labels) # bs* 33
         

@@ -198,7 +198,7 @@ class DataCollatorForSupervisedDataset(object):
         labels = [torch.tensor(x) for x in labels]
         labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX)
         
-        print(f'input_ids: {input_ids.shape}')
+        # print(f'input_ids: {input_ids.shape}')
         
         # Add image features
         image_names = [instance['image_names'] for instance in instances] # batchsize [name1, name2]
@@ -325,9 +325,9 @@ class LlamaNUWA(transformers.LlamaForCausalLM):
         # print(f'inputs_embeds: {inputs_embeds.shape}')
         
         all_image_indices = (input_ids == image_token_id).to(image_features.device)
-        print(f'all_image_indices: {all_image_indices.shape}')
+        # print(f'all_image_indices: {all_image_indices.shape}')
         image_features = image_features.reshape(-1, image_features.shape[-1])
-        print(f'image_features: {image_features.shape}')
+        # print(f'image_features: {image_features.shape}')
         inputs_embeds[all_image_indices] = image_features
         
         
